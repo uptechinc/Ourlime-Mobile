@@ -366,7 +366,7 @@ export default function SellerReviewSection() {
             subtitle={[application.name, application.email].filter(Boolean).join(' · ')}
             meta={`Revision ${application.revision}`}
             status={{ label: STATUS_LABELS[application.status], tone: STATUS_TONES[application.status] }}
-            leading={{ kind: 'icon', name: 'shopping-bag', tone: STATUS_TONES[application.status] }}
+            leading={{ kind: 'avatar', name: application.name || application.storeName, userId: application.ownerId }}
             onPress={() => handleOpenApplication(application)}
             accessibilityHint="Opens the application"
           />

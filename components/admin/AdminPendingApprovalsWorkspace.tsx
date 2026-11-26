@@ -164,7 +164,11 @@ function QueueSection({ queue, nowMs, onOpen, onRetry }: QueueSectionProps) {
             title={item.title}
             subtitle={item.subtitle || undefined}
             meta={age || undefined}
-            leading={{ kind: 'icon', name: category.icon as AdminIconName }}
+            leading={item.visual?.kind === 'thumb'
+              ? { kind: 'thumb', uri: item.visual.uri }
+              : item.visual?.kind === 'avatar'
+                ? { kind: 'avatar', name: item.visual.name, userId: item.visual.userId }
+                : { kind: 'icon', name: category.icon as AdminIconName }}
             onPress={route ? () => onOpen(route) : undefined}
           />
         );

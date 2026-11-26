@@ -26,6 +26,7 @@ import { adminApiService } from './AdminApiService';
 import { appServerService } from './AppServerService';
 import { firestoreBatchReadService } from './FirestoreBatchReadService';
 import { privateProfileService } from './PrivateProfileService';
+import { normalizeStickerUrl } from '@/lib/sticker/StickerService';
 import {
   ADMIN_WORKSPACE_PAGE_SIZE,
   buildWorkspacePage,
@@ -168,6 +169,8 @@ export type AdminBetaRecord = {
   notes: string;
   reviewer: string;
   createdAtMs: number;
+  /** The member's account, for the avatar; null for invitations sent to an email. */
+  userId: string | null;
 };
 export type AdminBetaOverview = {
   records: AdminBetaRecord[];
@@ -485,7 +488,9 @@ export class AdminWorkspaceService {
     // Listings keep their photos in thumbnailImage and images[]; the other fields are for communities and stickers.
     const listingImages = Array.isArray(value.images) ? value.images.filter((image): image is string => typeof image === 'string' && image.trim().length > 0) : [];
     const images = kind === 'products' ? [...new Set([readString(value.thumbnailImage), ...listingImages].filter(Boolean))] : [];
-    const imageUrl = readString(value.imageUrl) || readString(value.imageURL) || readString(value.image) || readString(value.coverImage) || images[0] || null;
+    const rawImageUrl = readString(value.imageUrl) || readString(value.imageURL) || readString(value.image) || readString(value.coverImage) || (kind === 'sticker_packs' ? readString(value.icon) : '') || images[0] || '';
+    // Stickers store website paths (/images/stickers/...), which the app can only load from the website's host.
+    const imageUrl = rawImageUrl ? (kind === 'stickers' || kind === 'sticker_packs' ? normalizeStickerUrl(rawImageUrl) : rawImageUrl) : null;
     // Buyers see the sale price while a listing is on sale; older listings only have `price`.
     const price = readNumber(value.price) || (value.isOnSale === true ? readNumber(value.salePrice) : 0) || readNumber(value.originalPrice) || readNumber(value.salePrice);
     const currency = readString(value.currency);
@@ -539,6 +544,7 @@ export class AdminWorkspaceService {
       notes: readString(value.adminNotes) || readString(value.betaAdminNotes),
       reviewer: readString(value.reviewedByName) || 'Unassigned',
       createdAtMs: readDateMs(kind === 'tester' ? value.betaTesterSince : value.createdAt),
+      userId: kind === 'tester' ? id : kind === 'application' ? readString(value.userId) || null : null,
     };
   }
 

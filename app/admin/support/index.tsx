@@ -174,7 +174,9 @@ export default function AdminSupportTicketsScreen({
 						title={ticket.subject}
 						subtitle={`${ticket.reference} · ${ticket.requesterDisplayName} · ${SUPPORT_TICKET_CATEGORY_LABELS[ticket.category]}`}
 						meta={ticket.assignedStaff ? `Assigned to ${ticket.assignedStaff.displayName}` : 'Waiting for claim'}
-						leading={{ kind: 'icon', name: ticket.priority === 'urgent' ? 'alert-triangle' : 'life-buoy', tone: ticket.priority === 'urgent' ? 'danger' : ticket.assignedStaff ? 'neutral' : 'pending' }}
+						leading={ticket.requesterUserId
+							? { kind: 'avatar', name: ticket.requesterDisplayName, userId: ticket.requesterUserId }
+							: { kind: 'icon', name: ticket.priority === 'urgent' ? 'alert-triangle' : 'life-buoy', tone: ticket.priority === 'urgent' ? 'danger' : ticket.assignedStaff ? 'neutral' : 'pending' }}
 						status={{ label: `${STATUS_LABELS[ticket.status]}${ticket.priority === 'urgent' ? ' · Urgent' : ''}`, tone: ticket.priority === 'urgent' ? 'danger' : STATUS_TONES[ticket.status] }}
 						onPress={() => router.push(`${detailRoutePrefix}/${ticket.id}` as Href)}
 						accessibilityHint="Opens the ticket"

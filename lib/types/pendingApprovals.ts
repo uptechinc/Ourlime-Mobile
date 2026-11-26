@@ -36,7 +36,11 @@ export type PendingApprovalItem = {
   submittedAtMs: number | null;
   /** Where tapping the item goes; null when there is nowhere to open it. */
   route: Href | null;
+  /** What the row shows: the listing's photo, or the member's avatar. Absent when the record has neither. */
+  visual?: PendingApprovalVisual;
 };
+
+export type PendingApprovalVisual = { kind: 'thumb'; uri: string } | { kind: 'avatar'; userId: string; name: string };
 
 export type PendingApprovalQueue =
   | {

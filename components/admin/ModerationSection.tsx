@@ -207,6 +207,8 @@ function ModerationQueues({ initialTab }: { initialTab: ModerationTab }) {
 							key={report.id}
 							title={report.reason}
 							subtitle={`${report.contentType} · reported by ${report.reporterName}`}
+							// The member the report is about; the reported content itself only opens in the report detail.
+							leading={report.reportedUserId ? { kind: 'avatar', name: report.contentType, userId: report.reportedUserId } : { kind: 'icon', name: 'flag', tone: severityTone(report.severity) }}
 							meta={`${toFilterLabel(report.status, '')}${report.description ? ` · ${report.description}` : ''}`}
 							status={{ label: report.severity, tone: severityTone(report.severity) }}
 							onPress={() => router.push({ pathname: '/admin/reports/[reportId]', params: { reportId: report.id } })}
@@ -236,7 +238,7 @@ function ModerationQueues({ initialTab }: { initialTab: ModerationTab }) {
 									title={`${toFilterLabel(appeal.contentType, '')} appeal`}
 									subtitle={`By ${appeal.authorName || appeal.authorId}`}
 									meta={`Deleted for: ${appeal.deletionReason}`}
-									leading={{ kind: 'icon', name: 'rotate-ccw', tone: 'pending' }}
+									leading={appeal.authorId ? { kind: 'avatar', name: appeal.authorName || 'Member', userId: appeal.authorId } : { kind: 'icon', name: 'rotate-ccw', tone: 'pending' }}
 									onPress={() => setExpandedAppealId(isExpanded ? null : appeal.id)}
 									accessibilityHint={isExpanded ? 'Hides the appeal text' : 'Shows the appeal text'}
 									inlineAction={{

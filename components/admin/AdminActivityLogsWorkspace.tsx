@@ -290,6 +290,7 @@ export default function AdminActivityLogsWorkspace() {
               <AdminListRow
                 key={log.id}
                 title={log.username || 'System actor'}
+                leading={log.userId ? { kind: 'avatar', name: log.username || 'Member', userId: log.userId } : { kind: 'icon', name: 'cpu' }}
                 subtitle={log.details || undefined}
                 meta={meta}
                 status={{ label: formatActionLabel(log.action), tone: getActionTone(log.action) }}

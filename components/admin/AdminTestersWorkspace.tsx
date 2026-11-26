@@ -275,6 +275,7 @@ export default function AdminTestersWorkspace() {
 								<AdminListRow
 									key={`${record.kind}-${record.id}`}
 									title={record.name || record.email || 'Unnamed record'}
+									leading={record.userId ? { kind: 'avatar', name: record.name || record.email, userId: record.userId } : { kind: 'icon', name: 'mail' }}
 									subtitle={`${record.email || 'No email'} · ${record.kind}`}
 									meta={record.source || undefined}
 									status={{ label: record.status, tone: getStatusTone(record.status) }}

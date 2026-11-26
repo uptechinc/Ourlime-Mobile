@@ -309,6 +309,7 @@ export default function AdminJobsWorkspace() {
                 key={job.id}
                 title={job.title}
                 subtitle={`${job.posterName}${job.posterUsername ? ` · @${job.posterUsername}` : ''}`}
+                leading={{ kind: 'avatar', name: job.posterName || job.title, userId: job.userId || undefined }}
                 meta={[job.category || 'Uncategorized', adminJobsService.formatPrice(job), job.type].filter(Boolean).join(' · ')}
                 status={{ label: STATUS_LABELS[job.status] ?? STATUS_LABELS.draft, tone: statusTone(job.status) }}
                 onPress={() => setSelectedJob(job)}

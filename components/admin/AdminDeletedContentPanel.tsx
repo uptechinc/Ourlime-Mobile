@@ -238,7 +238,7 @@ export default function AdminDeletedContentPanel({ controller }: AdminDeletedCon
 							title={record.contentTitle}
 							subtitle={record.reason}
 							meta={`${TYPE_LABELS[record.contentType] ?? record.contentType} · ${formatDeletedAt(record.deletedAt)} · by ${record.adminName}`}
-							leading={{ kind: 'icon', name: 'trash-2', tone: 'danger' }}
+							leading={record.authorId ? { kind: 'avatar', name: record.contentTitle, userId: record.authorId } : { kind: 'icon', name: 'trash-2', tone: 'danger' }}
 							status={record.isAuthorBanned ? { label: 'Author banned', tone: 'danger' } : undefined}
 							inlineAction={{ key: 'restore', label: 'Restore', icon: 'rotate-ccw', tone: 'positive', disabled: processing, onPress: () => openRestore(record) }}
 							overflowActions={[

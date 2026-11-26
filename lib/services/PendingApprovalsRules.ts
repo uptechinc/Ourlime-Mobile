@@ -3,6 +3,7 @@ import type {
   PendingApprovalCategory,
   PendingApprovalCategoryKey,
   PendingApprovalFields,
+  PendingApprovalVisual,
   PendingApprovalItem,
   PendingApprovalQueue,
   PendingApprovalSection,
@@ -100,7 +101,33 @@ export function isPendingDocument(key: PendingApprovalCategoryKey, data: Pending
 }
 
 /** Turns one Firestore document of a client-readable queue into a preview row. */
+/** The photo or member a waiting item is about, so the queue shows a picture instead of a generic icon. */
+function pendingVisual(key: PendingApprovalCategoryKey, id: string, data: PendingApprovalFields, title: string): PendingApprovalVisual | null {
+  const firstImage = (value: unknown): string => (Array.isArray(value) ? value.map(readString).find(Boolean) ?? '' : '');
+  const thumb = (uri: string): PendingApprovalVisual | null => (uri ? { kind: 'thumb', uri } : null);
+  const avatar = (userId: string): PendingApprovalVisual | null => (userId ? { kind: 'avatar', userId, name: title } : null);
+  switch (key) {
+    case 'products': return thumb(readString(data.thumbnailImage) || firstImage(data.images) || readString(data.imageUrl));
+    case 'pets': return thumb(firstImage(data.imageUrls) || readString(data.imageUrl));
+    case 'courses': return thumb(readString(data.image) || readString(data.thumbnail));
+    case 'sellers': return avatar(readString(data.ownerId) || id);
+    case 'jobs': return avatar(readString(readObject(data.basic_info)?.userId) || readString(data.userId));
+    case 'instructors': return avatar(readString(data.userId) || id);
+    case 'identity': return avatar(id);
+    case 'beta': return avatar(readString(data.userId));
+    case 'reports': return avatar(readString(data.reportedUserId));
+    case 'appeals': return avatar(readString(data.authorId));
+    default: return null;
+  }
+}
+
 export function mapPendingDocument(key: PendingApprovalCategoryKey, id: string, data: PendingApprovalFields): PendingApprovalItem {
+  const item = mapPendingFields(key, id, data);
+  const visual = pendingVisual(key, id, data, item.title);
+  return visual ? { ...item, visual } : item;
+}
+
+function mapPendingFields(key: PendingApprovalCategoryKey, id: string, data: PendingApprovalFields): PendingApprovalItem {
   const category = getPendingCategory(key);
   const base = { id, route: category.reviewRoute };
   switch (key) {

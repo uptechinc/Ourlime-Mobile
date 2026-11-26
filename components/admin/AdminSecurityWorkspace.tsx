@@ -460,7 +460,7 @@ export default function AdminSecurityWorkspace() {
                 title={label}
                 subtitle={entry.reason ? `Reason: ${entry.reason}` : undefined}
                 meta={entry.email ? entry.userId : undefined}
-                leading={{ kind: 'icon', name: 'star', tone: 'positive' }}
+                leading={{ kind: 'avatar', name: label, userId: entry.userId }}
                 overflowActions={[
                   { key: 'remove', label: 'Remove from whitelist', icon: 'trash-2', tone: 'danger', disabled: saving, onPress: () => setPendingRemoval({ kind: 'whitelist', id: entry.userId, label }) },
                 ]}

@@ -170,7 +170,7 @@ export default function AdminCouriersWorkspace() {
               title={courier.businessName}
               subtitle={`${courier.contactName}${courier.startingPrice !== undefined ? ` · From $${courier.startingPrice.toFixed(2)} TTD` : ''}`}
               status={{ label: COURIER_STATUS_LABELS[courier.status], tone: statusTone(courier.status) }}
-              leading={{ kind: 'icon', name: 'truck', tone: statusTone(courier.status) }}
+              leading={courier.ownerId ? { kind: 'avatar', name: courier.contactName || courier.businessName, userId: courier.ownerId } : { kind: 'icon', name: 'truck', tone: statusTone(courier.status) }}
               details={[
                 { label: 'About', value: courier.description },
                 { label: 'Areas', value: courierAreasText(courier) },
