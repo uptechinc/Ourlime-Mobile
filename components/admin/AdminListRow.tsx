@@ -13,7 +13,8 @@ import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 export type AdminListRowLeading =
 	| { kind: 'avatar'; uri?: string; name: string; /** Looks up the member's chosen picture when uri is empty or broken. */ userId?: string }
-	| { kind: 'thumb'; uri?: string }
+	/** 'large' for listings (products), where the photo should carry the row. */
+	| { kind: 'thumb'; uri?: string; size?: 'regular' | 'large' }
 	| { kind: 'icon'; name: AdminIconName; tone?: AdminToneName };
 
 export type AdminListRowProps = {
@@ -41,10 +42,12 @@ function RowLeading({ leading }: { leading: AdminListRowLeading }) {
 		return <UserAvatar userId={leading.userId} profileImage={leading.uri ?? null} firstName={leading.name} size={40} />;
 	}
 	if (leading.kind === 'thumb') {
+		const side = leading.size === 'large' ? 88 : 48;
+		const corner = leading.size === 'large' ? radius.md : radius.sm;
 		return leading.uri ? (
-			<CachedImage uri={leading.uri} style={{ width: 48, height: 48, borderRadius: radius.sm }} />
+			<CachedImage uri={leading.uri} style={{ width: side, height: side, borderRadius: corner, backgroundColor: colors.control }} />
 		) : (
-			<View style={{ width: 48, height: 48, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.control }}>
+			<View style={{ width: side, height: side, borderRadius: corner, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.control }}>
 				<Icon name="image" size={20} color={colors.mutedText} />
 			</View>
 		);

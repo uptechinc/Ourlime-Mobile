@@ -8,6 +8,7 @@ import AdminButton from '@/components/admin/AdminButton';
 import AdminOverflowMenu from '@/components/admin/AdminOverflowMenu';
 import AdminState from '@/components/admin/AdminState';
 import AdminStatusPill from '@/components/admin/AdminStatusPill';
+import AdminMediaGallery from '@/components/admin/AdminMediaGallery';
 import UserAvatar from '@/components/ui/UserAvatar';
 import { getAdminTone, radius, space, type, type AdminIconName, type AdminToneName } from '@/lib/admin/adminTokens';
 import type { AdminHeaderAction, AdminOverflowItem } from '@/lib/admin/adminTypes';
@@ -71,20 +72,8 @@ function CardMedia({ media }: { media: AdminReviewCardMedia }) {
 		);
 	}
 	if (!media.uris.length) return null;
-	return (
-		<View style={{ flexDirection: 'row', gap: space.sm }}>
-			{media.uris.slice(0, 3).map((uri, photoIndex) => (
-				<Image
-					key={uri}
-					source={{ uri }}
-					style={{ flex: 1, height: 96, borderRadius: radius.sm, backgroundColor: colors.control }}
-					contentFit="cover"
-					accessibilityLabel={`${media.label} photo ${photoIndex + 1}`}
-					accessibilityIgnoresInvertColors
-				/>
-			))}
-		</View>
-	);
+	// Store-style: one large photo and thumbnails to switch, so the reviewer judges the photos, not a strip of crops.
+	return <AdminMediaGallery uris={media.uris} label={media.label} />;
 }
 
 /**

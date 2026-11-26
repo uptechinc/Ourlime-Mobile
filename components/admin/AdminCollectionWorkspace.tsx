@@ -20,6 +20,7 @@ import AdminButton from './AdminButton';
 import AdminIconButton from './AdminIconButton';
 import AdminOverflowMenu from './AdminOverflowMenu';
 import AdminDialog from './AdminDialog';
+import AdminMediaGallery from './AdminMediaGallery';
 import {
 	AdminWorkspaceService,
 	type AdminStickerFields,
@@ -265,20 +266,9 @@ function CollectionRecordSheet({ kind, record, busy, onClose, onApplyStatus, onS
 					{record ? (
 						<KeyboardSafeView style={{ flex: 1 }}>
 							<ScrollView ref={scrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: space.lg, paddingBottom: space.xxl, gap: space.lg }}>
-								{record.images.length ? (
-									<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.sm }} accessibilityLabel={`${record.images.length} listing ${record.images.length === 1 ? 'photo' : 'photos'}`}>
-										{record.images.map((imageUri, imageIndex) => (
-											<CachedImage
-												key={imageUri}
-												uri={imageUri}
-												accessibilityLabel={`Photo ${imageIndex + 1} of ${record.images.length}`}
-												style={{ width: record.images.length === 1 ? 300 : 240, height: 240, borderRadius: radius.lg, backgroundColor: colors.surface }}
-											/>
-										))}
-									</ScrollView>
-								) : null}
+								{kind === 'products' ? <AdminMediaGallery uris={record.images} label={record.title} /> : null}
 								<View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-									{record.images.length ? null : record.imageUrl ? (
+									{kind === 'products' ? null : record.imageUrl ? (
 										<CachedImage uri={record.imageUrl} style={{ width: 64, height: 64, borderRadius: radius.md }} />
 									) : (
 										<View style={{ width: 64, height: 64, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: positive.border, backgroundColor: positive.soft }}>
@@ -289,10 +279,14 @@ function CollectionRecordSheet({ kind, record, busy, onClose, onApplyStatus, onS
 										<Text numberOfLines={2} style={[type.section, { color: colors.text }]}>
 											{record.title}
 										</Text>
+										{kind === 'products' && record.metricLabel ? (
+											// Price reads first, like a store product page.
+											<Text style={[type.display, { color: colors.text }]}>{record.metricLabel}</Text>
+										) : null}
 										{record.subtitle ? (
 											<Text numberOfLines={1} style={[type.meta, { color: colors.mutedText }]}>
 												{record.subtitle}
-												{record.metricLabel ? ` · ${record.metricLabel}` : ''}
+												{record.metricLabel && kind !== 'products' ? ` · ${record.metricLabel}` : ''}
 											</Text>
 										) : null}
 										<AdminStatusPill label={record.status} tone={statusTone(record.status)} />
@@ -732,7 +726,7 @@ export default function AdminCollectionWorkspace({ kind, title, subtitle, segmen
 								key={item.id}
 								title={item.title}
 								subtitle={[item.subtitle, item.metricLabel, item.sellerName].filter(Boolean).join(' · ')}
-								leading={item.imageUrl ? { kind: 'thumb', uri: item.imageUrl } : { kind: 'icon', name: KIND_ICONS[kind], tone: 'positive' }}
+								leading={item.imageUrl || kind === 'products' ? { kind: 'thumb', uri: item.imageUrl ?? undefined, size: kind === 'products' ? 'large' : 'regular' } : { kind: 'icon', name: KIND_ICONS[kind], tone: 'positive' }}
 								status={{ label: item.status, tone: statusTone(item.status) }}
 								onPress={() => setSelected(item)}
 								accessibilityHint="Opens the record"
