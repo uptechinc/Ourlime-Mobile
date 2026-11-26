@@ -7,6 +7,7 @@ import { toast } from 'sonner-native';
 import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 import CachedImage from '@/components/ui/CachedImage';
+import UserAvatar from '@/components/ui/UserAvatar';
 import { readMultiFilter, readSingleFilter, type AnyFilterGroup, type FilterValues } from '@/components/ui/FilterSheet';
 import AdminScreen, { type AdminScreenState } from './AdminScreen';
 import AdminToolbar, { type AdminToolbarSegments } from './AdminToolbar';
@@ -181,6 +182,29 @@ function CollectionRecordSheet({ kind, record, busy, onClose, onApplyStatus, onS
 		void runApply();
 	};
 
+	/** Pending listing, nothing picked yet: show Approve / Reject instead of making the reviewer find the radio list. */
+	const isPendingProduct = kind === 'products' && record?.status === 'pending' && draftStatus === record.status;
+
+	const handleQuickApprove = async () => {
+		if (!record || busy) return;
+		setNotice(null);
+		try {
+			const appliedStatus = await onApplyStatus('approved', undefined);
+			setDraftStatus(appliedStatus);
+			setNotice({ tone: 'positive', message: `${record.title} is approved and visible in the marketplace.` });
+		} catch (actionError: unknown) {
+			setNotice({ tone: 'danger', message: actionError instanceof Error ? actionError.message : 'The listing could not be approved.' });
+		}
+	};
+
+	const scrollRef = useRef<ScrollView>(null);
+	const handleQuickReject = () => {
+		// Rejecting needs a reason for the seller: pick Rejected and bring the reason field into view.
+		setDraftStatus('rejected');
+		setNotice(null);
+		requestAnimationFrame(() => scrollRef.current?.scrollToEnd({ animated: true }));
+	};
+
 	const handleSaveSticker = async () => {
 		if (!stickerFields || busy) return;
 		setNotice(null);
@@ -240,9 +264,21 @@ function CollectionRecordSheet({ kind, record, busy, onClose, onApplyStatus, onS
 					</View>
 					{record ? (
 						<KeyboardSafeView style={{ flex: 1 }}>
-							<ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: space.lg, paddingBottom: space.xxl, gap: space.lg }}>
+							<ScrollView ref={scrollRef} keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: space.lg, paddingBottom: space.xxl, gap: space.lg }}>
+								{record.images.length ? (
+									<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: space.sm }} accessibilityLabel={`${record.images.length} listing ${record.images.length === 1 ? 'photo' : 'photos'}`}>
+										{record.images.map((imageUri, imageIndex) => (
+											<CachedImage
+												key={imageUri}
+												uri={imageUri}
+												accessibilityLabel={`Photo ${imageIndex + 1} of ${record.images.length}`}
+												style={{ width: record.images.length === 1 ? 300 : 240, height: 240, borderRadius: radius.lg, backgroundColor: colors.surface }}
+											/>
+										))}
+									</ScrollView>
+								) : null}
 								<View style={{ flexDirection: 'row', alignItems: 'center', gap: space.md }}>
-									{record.imageUrl ? (
+									{record.images.length ? null : record.imageUrl ? (
 										<CachedImage uri={record.imageUrl} style={{ width: 64, height: 64, borderRadius: radius.md }} />
 									) : (
 										<View style={{ width: 64, height: 64, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: positive.border, backgroundColor: positive.soft }}>
@@ -271,6 +307,33 @@ function CollectionRecordSheet({ kind, record, busy, onClose, onApplyStatus, onS
 											<Text style={[type.body, { color: positive.text }]}>{notice.message}</Text>
 										</View>
 									)
+								) : null}
+
+								{kind === 'products' ? (
+									<AdminSection title="Listing">
+										{record.status === 'pending' ? (
+											<Text style={[type.body, { color: getAdminTone(colors, 'pending').text }]}>Waiting for review. Approve it to show it in the marketplace, or reject it with a reason for the seller.</Text>
+										) : null}
+										{[
+											{ label: 'Price', value: record.metricLabel ?? 'No price' },
+											{ label: 'Category', value: record.category || 'Uncategorized' },
+											...(record.condition ? [{ label: 'Condition', value: capitalize(record.condition) }] : []),
+										].map((fact) => (
+											<View key={fact.label} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: space.md }}>
+												<Text style={[type.label, { color: colors.mutedText }]}>{fact.label}</Text>
+												<Text style={[type.bodyStrong, { flexShrink: 1, textAlign: 'right', color: colors.text }]}>{fact.value}</Text>
+											</View>
+										))}
+										{record.ownerId || record.sellerName ? (
+											<View style={{ flexDirection: 'row', alignItems: 'center', gap: space.sm }}>
+												<UserAvatar userId={record.ownerId} firstName={record.sellerName} size={32} />
+												<View style={{ flex: 1 }}>
+													<Text style={[type.label, { color: colors.mutedText }]}>Seller</Text>
+													<Text numberOfLines={1} style={[type.bodyStrong, { color: colors.text }]}>{record.sellerName || 'Unknown seller'}</Text>
+												</View>
+											</View>
+										) : null}
+									</AdminSection>
 								) : null}
 
 								<AdminSection title="Details">
@@ -359,7 +422,13 @@ function CollectionRecordSheet({ kind, record, busy, onClose, onApplyStatus, onS
 									) : null}
 								</AdminSection>
 							</ScrollView>
-							<View style={{ flexDirection: 'row', paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.md + insets.bottom, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.navigation }}>
+							<View style={{ flexDirection: 'row', gap: space.md, paddingHorizontal: space.lg, paddingTop: space.md, paddingBottom: space.md + insets.bottom, borderTopWidth: 1, borderTopColor: colors.border, backgroundColor: colors.navigation }}>
+								{isPendingProduct ? (
+									<>
+										<AdminButton label="Reject" icon="x" tone="danger" disabled={busy} onPress={handleQuickReject} style={{ flex: 1 }} />
+										<AdminButton label="Approve" icon="check" tone="positive" emphasis="primary" busy={busy} onPress={() => void handleQuickApprove()} style={{ flex: 1 }} />
+									</>
+								) : (
 								<AdminButton
 									label={draftStatus && draftStatus !== record.status ? `Apply: ${capitalize(draftStatus)}` : 'Apply'}
 									icon="check"
@@ -371,6 +440,7 @@ function CollectionRecordSheet({ kind, record, busy, onClose, onApplyStatus, onS
 									onPress={handleApplyPress}
 									style={{ flex: 1 }}
 								/>
+								)}
 							</View>
 						</KeyboardSafeView>
 					) : null}
@@ -661,7 +731,7 @@ export default function AdminCollectionWorkspace({ kind, title, subtitle, segmen
 							<AdminListRow
 								key={item.id}
 								title={item.title}
-								subtitle={`${item.subtitle}${item.metricLabel ? ` · ${item.metricLabel}` : ''}`}
+								subtitle={[item.subtitle, item.metricLabel, item.sellerName].filter(Boolean).join(' · ')}
 								leading={item.imageUrl ? { kind: 'thumb', uri: item.imageUrl } : { kind: 'icon', name: KIND_ICONS[kind], tone: 'positive' }}
 								status={{ label: item.status, tone: statusTone(item.status) }}
 								onPress={() => setSelected(item)}

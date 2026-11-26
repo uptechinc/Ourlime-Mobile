@@ -59,6 +59,17 @@ type AdminDocumentData = {
   imageUrl?: unknown;
   imageURL?: unknown;
   coverImage?: unknown;
+  thumbnailImage?: unknown;
+  images?: unknown;
+  shortDescription?: unknown;
+  longDescription?: unknown;
+  sellerId?: unknown;
+  sellerName?: unknown;
+  salePrice?: unknown;
+  originalPrice?: unknown;
+  isOnSale?: unknown;
+  currency?: unknown;
+  condition?: unknown;
   packId?: unknown;
   isActive?: unknown;
   isPublished?: unknown;
@@ -106,6 +117,11 @@ export type AdminWorkspaceItem = {
   privacy: string;
   /** Editable sticker / sticker-pack fields (the website's sticker manager form); null for other kinds. */
   stickerFields: AdminStickerFields | null;
+  /** Products: every listing photo (cover first) and the listing facts a reviewer needs. Empty for other kinds. */
+  images: string[];
+  sellerName: string;
+  condition: string;
+  currency: string;
 };
 /** Pack: name, description, icon, folder. Sticker: name, keywords, category, packId, imageUrl. */
 export type AdminStickerFields = {
@@ -465,8 +481,14 @@ export class AdminWorkspaceService {
 
   private normalizeWorkspaceItem(kind: AdminWorkspaceKind, id: string, value: AdminDocumentData): AdminWorkspaceItem {
     const title = readString(value.title) || readString(value.name) || 'Untitled';
-    const ownerId = readString(value.creatorId) || readString(value.userId) || readString(value.ownerId) || null;
-    const imageUrl = readString(value.imageUrl) || readString(value.imageURL) || readString(value.image) || readString(value.coverImage) || null;
+    const ownerId = readString(value.creatorId) || readString(value.sellerId) || readString(value.userId) || readString(value.ownerId) || null;
+    // Listings keep their photos in thumbnailImage and images[]; the other fields are for communities and stickers.
+    const listingImages = Array.isArray(value.images) ? value.images.filter((image): image is string => typeof image === 'string' && image.trim().length > 0) : [];
+    const images = kind === 'products' ? [...new Set([readString(value.thumbnailImage), ...listingImages].filter(Boolean))] : [];
+    const imageUrl = readString(value.imageUrl) || readString(value.imageURL) || readString(value.image) || readString(value.coverImage) || images[0] || null;
+    // Buyers see the sale price while a listing is on sale; older listings only have `price`.
+    const price = readNumber(value.price) || (value.isOnSale === true ? readNumber(value.salePrice) : 0) || readNumber(value.originalPrice) || readNumber(value.salePrice);
+    const currency = readString(value.currency);
     const active = isWorkspaceRecordActive(value);
     const status = resolveWorkspaceStatus(value);
     const privacy = kind === 'communities' ? resolveCommunityPrivacy(value.privacy, value.isPrivate) : '';
@@ -475,15 +497,15 @@ export class AdminWorkspaceService {
       id,
       title,
       subtitle: kind === 'communities' ? privacy : kind === 'stickers' ? readString(value.packId) || 'Unassigned pack' : readString(value.category) || 'Uncategorized',
-      description: readString(value.description),
+      description: readString(value.description) || readString(value.longDescription) || readString(value.shortDescription),
       status,
       category: readString(value.category),
       imageUrl,
       ownerId,
-      metricLabel: kind === 'communities' ? `${memberCount} members` : kind === 'products' && readNumber(value.price) ? `$${readNumber(value.price).toLocaleString()}` : null,
+      metricLabel: kind === 'communities' ? `${memberCount} members` : kind === 'products' && price ? `${currency ? `${currency} ` : '$'}${price.toLocaleString()}` : null,
       createdAtMs: readDateMs(value.createdAt),
       isActive: active,
-      price: readNumber(value.price),
+      price,
       memberCount,
       privacy,
       stickerFields: kind === 'stickers' || kind === 'sticker_packs'
@@ -498,6 +520,10 @@ export class AdminWorkspaceService {
             imageUrl: readString(value.imageUrl),
           }
         : null,
+      images,
+      sellerName: readString(value.sellerName),
+      condition: readString(value.condition).replace(/_/g, ' '),
+      currency,
     };
   }
 

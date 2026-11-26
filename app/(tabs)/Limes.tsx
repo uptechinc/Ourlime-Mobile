@@ -707,9 +707,11 @@ export default function LimesScreen() {
             onSeekingChange={setSeeking}
             reel={item}
             isActive={playbackAllowed && !pagerScrolling && index === activeIndex}
+            // The next Lime (and on iOS the previous one) is loaded paused, so it is buffered before the swipe lands.
+            // It stays mounted while the pager scrolls; unmounting it mid-swipe threw the buffer away.
             shouldLoadVideo={playbackAllowed && (
               index === activeIndex
-              || (Platform.OS !== 'android' && !pagerScrolling && preloadAdjacentVideos && Math.abs(index - activeIndex) <= 1)
+              || (preloadAdjacentVideos && (index === activeIndex + 1 || (Platform.OS !== 'android' && index === activeIndex - 1)))
             )}
             muted={muted}
             isRepostedInitial={
@@ -893,8 +895,10 @@ type FullscreenButtonFrame = {
 
 type PlaybackSurfaceState = 'preparing' | 'decoded' | 'retrying' | 'error';
 type PlaybackSurfaceMode = 'inline' | 'fullscreen';
-const POSTER_REVEAL_HOLD_MS = 900;
-const LEGACY_POSTER_REVEAL_HOLD_MS = 3_500;
+// How long the poster stays up after a player starts preparing. Testers saw a ~2 s wait before each Lime played with
+// the old 900 ms / 3.5 s holds, so keep only enough to hide the surface swap.
+const POSTER_REVEAL_HOLD_MS = 150;
+const LEGACY_POSTER_REVEAL_HOLD_MS = 500;
 
 type ReelVideoPlayerProps = {
   url: string;
