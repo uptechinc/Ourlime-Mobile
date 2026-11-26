@@ -7,7 +7,7 @@
       "kind": "ota",
       "date": "2026-11-26",
       "notes": [
-        "Admins: every list shows a picture of what it is about: reports, appeals, jobs, activity logs, testers, couriers, seller applications, support tickets, deleted content and the whitelist show the member's photo; pending approvals show listing photos and course covers.",
+        "Admins: lists show a picture of what each row is about: member photos on reports, jobs, logs, testers, couriers, sellers and tickets, and listing photos and course covers in pending approvals.",
         "Admins: sticker and sticker pack images load again."
       ]
     },
