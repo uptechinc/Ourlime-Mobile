@@ -285,7 +285,7 @@ export default function DiscoverScreen() {
                         elevation: 2,
                       }}
                     >
-                      <UserAvatar profileImage={person.profileImage} firstName={person.firstName || person.userName} size={60} />
+                      <UserAvatar userId={person.id} profileImage={person.profileImage} firstName={person.firstName || person.userName} size={60} />
                       <Text numberOfLines={1} style={{ fontSize: 15, fontWeight: '700', color: colors.text, marginTop: 10, textAlign: 'center' }}>
                         {person.firstName} {person.lastName}
                       </Text>

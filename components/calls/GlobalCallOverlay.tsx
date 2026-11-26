@@ -193,7 +193,7 @@ export default function GlobalCallOverlay() {
         ) : null}
         {pictureInPicturePrimary === null ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6, padding: 8 }}>
-            <UserAvatar profileImage={peer.profilePicture} firstName={peerName} size={64} />
+            <UserAvatar userId={peer.userId} profileImage={peer.profilePicture} firstName={peerName} size={64} />
             <Text numberOfLines={1} style={[{ color: '#ffffff', fontSize: 14, fontWeight: '700' }, TEXT_SHADOW]}>{peerName}</Text>
             {isActive && connectedAt ? <CallDuration connectedAt={connectedAt} /> : null}
           </View>
@@ -245,7 +245,7 @@ export default function GlobalCallOverlay() {
 
           {/* Middle: avatar (voice calls, ringing, or video before any picture) */}
           <View pointerEvents="none" style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16 }}>
-            {showAvatar ? <UserAvatar profileImage={peer.profilePicture} firstName={peerName} size={isIncoming && primary !== null ? 120 : 200} /> : null}
+            {showAvatar ? <UserAvatar userId={peer.userId} profileImage={peer.profilePicture} firstName={peerName} size={isIncoming && primary !== null ? 120 : 200} /> : null}
             {nativeUnavailable ? (
               <Text style={{ color: '#fbbf24', backgroundColor: 'rgba(245,158,11,0.15)', borderRadius: 12, padding: 12, textAlign: 'center', fontSize: 12, marginHorizontal: 16 }}>
                 System calling and Agora require an Ourlime build. Expo Go cannot load native WebRTC modules.

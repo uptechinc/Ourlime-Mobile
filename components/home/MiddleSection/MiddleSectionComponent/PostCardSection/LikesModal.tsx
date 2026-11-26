@@ -112,7 +112,7 @@ export default function LikesModal({ visible, postId, origin, onClose }: LikesMo
           {users.map((user) => (
             <View key={user.id} style={styles.userRow}>
               <TouchableOpacity onPress={() => handleNavigateProfile(user)} style={styles.userTouchable}>
-                <UserAvatar profileImage={user.profileImage} firstName={user.firstName || user.userName} size={46} />
+                <UserAvatar userId={user.id} profileImage={user.profileImage} firstName={user.firstName || user.userName} size={46} />
                 <View style={styles.userCopy}>
                   <View style={styles.nameRow}><Text style={styles.name}>{user.firstName} {user.lastName}</Text>{postAuthorizationService.isIdentityVerified(user) ? <Icon name="check-circle" size={14} color={colors.accent} style={styles.verifiedIcon} /> : null}</View>
                   <Text style={styles.username}>@{user.userName}</Text>

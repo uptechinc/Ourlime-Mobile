@@ -422,7 +422,7 @@ export default function BlogDetailScreen() {
             {blog.excerpt ? <Text style={[styles.leadExcerpt, { color: isDark ? '#94a3b8' : '#475569', borderLeftColor: '#10b981' }]}>{stripHtml(blog.excerpt)}</Text> : null}
 
             <TouchableOpacity activeOpacity={0.7} onPress={() => blog.userId && router.push(`/profile/${blog.userId}`)} style={[styles.authorRow, { borderBottomColor: colors.border }]}>
-              <UserAvatar profileImage={blog.author.avatar} firstName={blog.author.name} size={44} />
+              <UserAvatar userId={blog.author.id} profileImage={blog.author.avatar} firstName={blog.author.name} size={44} />
               <View style={styles.authorInfo}>
                 <View style={styles.authorNameRow}>
                   <Text style={[styles.authorName, { color: colors.text }]}>{blog.author.name}</Text>

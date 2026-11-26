@@ -222,7 +222,7 @@ export default function FriendSearchPanel() {
                 onPress={() => router.push({ pathname: '/profile/[username]', params: { username: user.userName || user.uid } })}
                 style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}
               >
-                <UserAvatar profileImage={user.profilePicture} firstName={user.firstName || user.userName} size={40} />
+                <UserAvatar userId={user.uid} profileImage={user.profilePicture} firstName={user.firstName || user.userName} size={40} />
                 <View style={{ flex: 1, marginLeft: 10, marginRight: 8 }}>
                   <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '700', color: colors.text }}>{`${user.firstName} ${user.lastName}`.trim() || user.userName}</Text>
                   <Text numberOfLines={1} style={{ fontSize: 12, color: colors.mutedText }}>@{user.userName}</Text>

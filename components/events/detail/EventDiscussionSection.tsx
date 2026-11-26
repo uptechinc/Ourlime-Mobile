@@ -185,7 +185,7 @@ export default function EventDiscussionSection({ eventId, viewerId, organizerId,
       <View key={node.id} style={[styles.comment, depth > 0 && styles.reply]}>
         <View style={styles.commentRow}>
           <TouchableOpacity disabled={!node.authorUserName} onPress={() => node.authorUserName && router.push({ pathname: '/profile/[username]', params: { username: node.authorUserName } })}>
-            <UserAvatar profileImage={node.authorImage} firstName={node.authorName} size={depth > 0 ? 30 : 36} />
+            <UserAvatar userId={node.userId} profileImage={node.authorImage} firstName={node.authorName} size={depth > 0 ? 30 : 36} />
           </TouchableOpacity>
           <View style={styles.commentBody}>
             <View style={styles.commentHeader}>

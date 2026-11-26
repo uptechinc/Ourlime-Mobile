@@ -133,7 +133,7 @@ export default function JobDetailsBody({ job, onReport }: JobDetailsBodyProps) {
 
       <Section styles={styles} title={isQuickTask ? 'About the poster' : 'About the company'}>
         <View style={styles.posterRow}>
-          <UserAvatar profileImage={job.creator?.profileImage} firstName={posterName} size={48} />
+          <UserAvatar userId={job.basic_info.userId} profileImage={job.creator?.profileImage} firstName={posterName} size={48} />
           <View style={styles.flex}>
             <JobPosterLine name={posterName} isVerified={isVerified} />
             <Text style={styles.muted}>{isVerified ? 'Identity verified on Ourlime' : job.creator?.verificationStatus ? 'Identity not verified yet' : 'Ourlime member'}</Text>

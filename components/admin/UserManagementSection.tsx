@@ -731,7 +731,7 @@ export default function UserManagementSection() {
 								key={user.id}
 								title={getDisplayName(user)}
 								subtitle={`@${user.userName || 'unknown'} · ${user.role} · ${user.accountType}`}
-								leading={{ kind: 'avatar', uri: user.profilePicture ?? undefined, name: user.firstName || user.userName || user.email }}
+								leading={{ kind: 'avatar', uri: user.profilePicture ?? undefined, name: user.firstName || user.userName || user.email, userId: user.id }}
 								status={{ label: userStatus, tone: getUserStatusTone(userStatus) }}
 								accessibilityHint="Opens user management"
 								onPress={() => handleOpenUser(user)}
@@ -777,7 +777,7 @@ export default function UserManagementSection() {
 									backgroundColor: colors.navigation,
 								}}
 							>
-								<UserAvatar profileImage={selectedUser.profilePicture} firstName={selectedUser.firstName || selectedUser.userName} size={40} />
+								<UserAvatar userId={selectedUser.id} profileImage={selectedUser.profilePicture} firstName={selectedUser.firstName || selectedUser.userName} size={40} />
 								<View style={{ flex: 1, gap: space.xs }}>
 									<Text numberOfLines={1} accessibilityRole="header" style={[type.section, { color: colors.text }]}>
 										{selectedName}

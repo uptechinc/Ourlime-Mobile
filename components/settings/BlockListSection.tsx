@@ -81,7 +81,7 @@ export default function BlockListSection({ userId, blockedUsers, onBlockedUsersC
 
   const renderUser = (user: BlockedUserSummary, kind: 'block' | 'unblock') => (
     <View key={`${kind}-${user.id}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}>
-      <UserAvatar profileImage={user.profileImage} firstName={user.firstName || displayNameOf(user)} size={42} />
+      <UserAvatar userId={user.id} profileImage={user.profileImage} firstName={user.firstName || displayNameOf(user)} size={42} />
       <View style={{ flex: 1 }}>
         <Text numberOfLines={1} style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>{displayNameOf(user)}</Text>
         {user.userName ? <Text numberOfLines={1} style={{ color: colors.mutedText, fontSize: 12 }}>@{user.userName}</Text> : null}

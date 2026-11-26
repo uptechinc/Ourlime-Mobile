@@ -79,7 +79,7 @@ export default function EventReviewsSection({ eventId, viewerId, hasEnded, isAtt
     <View key={node.id} style={[styles.review, depth > 0 && styles.reply]}>
       <View style={styles.row}>
         <TouchableOpacity disabled={!node.authorUserName} onPress={() => node.authorUserName && router.push({ pathname: '/profile/[username]', params: { username: node.authorUserName } })}>
-          <UserAvatar profileImage={node.authorImage} firstName={node.authorName} size={depth > 0 ? 30 : 36} />
+          <UserAvatar userId={node.userId} profileImage={node.authorImage} firstName={node.authorName} size={depth > 0 ? 30 : 36} />
         </TouchableOpacity>
         <View style={styles.flex}>
           <View style={styles.headerRow}>

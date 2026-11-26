@@ -57,7 +57,7 @@ export default function MentionSuggestionList({ suggestions, isSearching = false
                 borderTopColor: colors.border,
               }}
             >
-              <UserAvatar profileImage={person.profileImage} firstName={person.firstName || person.userName} size={34} />
+              <UserAvatar userId={person.id} profileImage={person.profileImage} firstName={person.firstName || person.userName} size={34} />
               <View style={{ flex: 1, marginLeft: 10 }}>
                 <Text numberOfLines={1} style={{ color: colors.text, fontWeight: '700', fontSize: 14 }}>{fullName}</Text>
                 <Text numberOfLines={1} style={{ color: colors.mutedText, fontSize: 12 }}>@{person.userName}</Text>

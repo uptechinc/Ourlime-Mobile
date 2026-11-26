@@ -12,7 +12,7 @@ import type { AdminHeaderAction, AdminOverflowItem } from '@/lib/admin/adminType
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 
 export type AdminListRowLeading =
-	| { kind: 'avatar'; uri?: string; name: string }
+	| { kind: 'avatar'; uri?: string; name: string; /** Looks up the member's chosen picture when uri is empty or broken. */ userId?: string }
 	| { kind: 'thumb'; uri?: string }
 	| { kind: 'icon'; name: AdminIconName; tone?: AdminToneName };
 
@@ -38,7 +38,7 @@ export type AdminListRowProps = {
 function RowLeading({ leading }: { leading: AdminListRowLeading }) {
 	const { colors } = useAppTheme();
 	if (leading.kind === 'avatar') {
-		return <UserAvatar profileImage={leading.uri ?? null} firstName={leading.name} size={40} />;
+		return <UserAvatar userId={leading.userId} profileImage={leading.uri ?? null} firstName={leading.name} size={40} />;
 	}
 	if (leading.kind === 'thumb') {
 		return leading.uri ? (

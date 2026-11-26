@@ -80,7 +80,7 @@ export default function ProjectTaskCard({ task, today, memberById, milestoneName
             <View style={styles.avatars}>
               {assigneeIds.slice(0, 3).map((memberId, index) => {
                 const member = memberById.get(memberId);
-                return <View key={memberId} style={{ marginLeft: index === 0 ? 0 : -6 }}><UserAvatar profileImage={member?.avatar} firstName={member?.name} size={22} /></View>;
+                return <View key={memberId} style={{ marginLeft: index === 0 ? 0 : -6 }}><UserAvatar userId={memberId} profileImage={member?.avatar} firstName={member?.name} size={22} /></View>;
               })}
             </View>
           )}

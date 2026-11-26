@@ -134,7 +134,7 @@ export default function GeoGuesserLeaderboardScreen() {
                   {orderedPodium.map(({ entry, medal, isFirst }) => (
                     <View key={entry.rank} style={[styles.podiumCard, isWide && styles.flex, isFirst && styles.podiumFirst]}>
                       <Text style={isFirst ? styles.crown : styles.medal}>{medal}</Text>
-                      <UserAvatar profileImage={entry.avatarUrl} firstName={entry.username} size={isFirst ? 56 : 48} />
+                      <UserAvatar userId={entry.userId} profileImage={entry.avatarUrl} firstName={entry.username} size={isFirst ? 56 : 48} />
                       <Text style={[styles.podiumName, isFirst && styles.podiumNameFirst]} numberOfLines={1}>{entry.username}{entry.userId && entry.userId === activeUserId ? ' (you)' : ''}</Text>
                       <Text style={isFirst ? styles.podiumScoreFirst : styles.podiumScore}>{entry.score} pts</Text>
                       {isFirst ? <Text style={styles.firstPlace}>1ST PLACE</Text> : null}
@@ -153,7 +153,7 @@ export default function GeoGuesserLeaderboardScreen() {
                     return (
                       <View key={entry.rank} style={[styles.row, isMine && styles.rowMine]}>
                         <Text style={[styles.rankText, styles.rankColumn]}>{rankLabel(entry.rank)}</Text>
-                        <UserAvatar profileImage={entry.avatarUrl} firstName={entry.username} size={26} />
+                        <UserAvatar userId={entry.userId} profileImage={entry.avatarUrl} firstName={entry.username} size={26} />
                         <Text style={[styles.rowName, styles.flex]} numberOfLines={1}>{entry.username}{isMine ? ' (you)' : ''}</Text>
                         <Text style={styles.rowScore}>{entry.score} pts</Text>
                       </View>

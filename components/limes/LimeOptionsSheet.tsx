@@ -168,7 +168,7 @@ export default function LimeOptionsSheet({
           {/* Header */}
           <View style={styles.header}>
             <View style={styles.creatorInfo}>
-              <UserAvatar
+              <UserAvatar userId={reel.userId}
                 profileImage={reel.user?.profileImage}
                 firstName={reel.user?.firstName || 'Lime'}
                 size={40}

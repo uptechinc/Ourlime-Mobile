@@ -271,7 +271,7 @@ export default function FriendsTab({ userId, initialSection = 'friends' }: Frien
           ? 'Follower'
           : item.mutualCount > 0 ? `${item.mutualCount} mutual friend${item.mutualCount === 1 ? '' : 's'}` : '';
         return <TouchableOpacity key={`${section}-${item.id}`} onPress={() => openProfile(item)} style={{ flexDirection: 'row', alignItems: 'center', gap: 11, padding: 12, borderRadius: 18, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}>
-          <View><UserAvatar profileImage={item.profileImage} firstName={item.firstName || displayName} size={48} />{item.presence.status === 'online' ? <View style={{ position: 'absolute', right: 0, bottom: 1, width: 13, height: 13, borderRadius: 7, backgroundColor: '#10b981', borderWidth: 2, borderColor: colors.surface }} /> : null}</View>
+          <View><UserAvatar userId={item.id} profileImage={item.profileImage} firstName={item.firstName || displayName} size={48} />{item.presence.status === 'online' ? <View style={{ position: 'absolute', right: 0, bottom: 1, width: 13, height: 13, borderRadius: 7, backgroundColor: '#10b981', borderWidth: 2, borderColor: colors.surface }} /> : null}</View>
           <View style={{ flex: 1 }}>
             <Text numberOfLines={1} style={{ color: colors.text, fontSize: 15, fontWeight: '800' }}>{displayName}</Text>
             {item.userName ? <Text numberOfLines={1} style={{ color: colors.mutedText, marginTop: 2 }}>@{item.userName}{item.direction !== 'none' ? ` · ${item.direction}` : ''}</Text> : null}

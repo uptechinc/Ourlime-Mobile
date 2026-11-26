@@ -21,7 +21,7 @@ export type AdminReviewCardMedia =
 	/** One 16:9 cover (courses). */
 	| { kind: 'cover'; uri: string; label: string };
 
-export type AdminReviewCardLeading = { kind: 'avatar'; uri?: string; name: string } | { kind: 'icon'; name: AdminIconName; tone?: AdminToneName };
+export type AdminReviewCardLeading = { kind: 'avatar'; uri?: string; name: string; userId?: string } | { kind: 'icon'; name: AdminIconName; tone?: AdminToneName };
 
 export type AdminReviewCardProps = {
 	title: string;
@@ -48,7 +48,7 @@ export type AdminReviewCardProps = {
 
 function CardLeading({ leading }: { leading: AdminReviewCardLeading }) {
 	const { colors } = useAppTheme();
-	if (leading.kind === 'avatar') return <UserAvatar profileImage={leading.uri ?? null} firstName={leading.name} size={48} />;
+	if (leading.kind === 'avatar') return <UserAvatar userId={leading.userId} profileImage={leading.uri ?? null} firstName={leading.name} size={48} />;
 	const toneColors = getAdminTone(colors, leading.tone ?? 'neutral');
 	return (
 		<View style={{ width: 48, height: 48, borderRadius: radius.pill, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: toneColors.border, backgroundColor: toneColors.soft }}>

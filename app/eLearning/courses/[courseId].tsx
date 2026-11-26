@@ -553,7 +553,7 @@ export default function CourseDetailScreen() {
                   <View style={styles.tabContent}>
                     <View style={styles.instructorCard}>
                       <View style={styles.instructorRow}>
-                        <UserAvatar profileImage={course.instructor.avatar} firstName={course.instructor.name} size={56} />
+                        <UserAvatar userId={course.instructor.id} profileImage={course.instructor.avatar} firstName={course.instructor.name} size={56} />
                         <View style={styles.flex}>
                           <Text numberOfLines={2} style={styles.instructorName}>{course.instructor.name}</Text>
                           <Text numberOfLines={1} style={styles.instructorRole}>{course.instructor.role || 'Instructor'}</Text>

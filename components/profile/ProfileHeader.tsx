@@ -99,7 +99,7 @@ export default function ProfileHeader({
             shadowRadius: 8,
             elevation: 4,
           }}>
-            <UserAvatar profileImage={profile.profilePicture} firstName={profile.firstName} size={78} />
+            <UserAvatar userId={profile.uid} profileImage={profile.profilePicture} firstName={profile.firstName} size={78} />
           </TouchableOpacity>
 
           {/* Action buttons row */}

@@ -1,8 +1,8 @@
 import { CalendarDays, CheckCircle2, Globe2, Lock, MessageSquareText, Share2, ShieldCheck, Users } from 'lucide-react-native';
 import { Text, TouchableOpacity, View } from 'react-native';
-import CachedImage from '@/components/ui/CachedImage';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import type { CommunityDetailResource, CommunityPersonPreview } from '@/lib/types/community';
+import UserAvatar from '@/components/ui/UserAvatar';
 
 type CommunityAboutWorkspaceProps = { detail: CommunityDetailResource; onOpenProfile: (person: CommunityPersonPreview) => void; onInvite: () => void };
 
@@ -32,7 +32,7 @@ function FriendsHere({ friends, friendCount, onOpenProfile, onInvite }: FriendsH
       <Text style={{ marginTop: 6, color: colors.mutedText, fontSize: 12 }}>Friends already in this community</Text>
       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10 }}>
         {friends.map((friend, index) => <TouchableOpacity key={friend.userId} onPress={() => onOpenProfile(friend)} accessibilityRole="button" accessibilityLabel={`View ${friend.firstName || friend.userName}'s profile`} style={{ marginLeft: index === 0 ? 0 : -10, borderRadius: 22, borderWidth: 3, borderColor: colors.surface }}>
-          {friend.profilePicture ? <CachedImage uri={friend.profilePicture} recyclingKey={`community-friend-${friend.userId}-${friend.profilePicture}`} style={{ width: 40, height: 40, borderRadius: 20 }} contentFit="cover" /> : <View style={{ width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.successSurface }}><Text style={{ color: colors.accentText, fontWeight: '900' }}>{(friend.firstName || friend.userName || '?').charAt(0).toUpperCase()}</Text></View>}
+          <UserAvatar userId={friend.userId} profileImage={friend.profilePicture} firstName={friend.firstName || friend.userName} size={40} />
         </TouchableOpacity>)}
         {extra > 0 ? <View style={{ marginLeft: -10, width: 46, height: 46, borderRadius: 23, borderWidth: 3, borderColor: colors.surface, alignItems: 'center', justifyContent: 'center', backgroundColor: '#00D1FF' }}><Text style={{ color: '#ffffff', fontWeight: '900', fontSize: 12 }}>+{extra}</Text></View> : null}
         <Text numberOfLines={1} style={{ flex: 1, marginLeft: 10, color: colors.secondaryText, fontSize: 12 }}>{friends.map((friend) => `@${friend.userName}`).join(', ')}</Text>

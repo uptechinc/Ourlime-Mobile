@@ -33,6 +33,7 @@ import DraftsSheet from '@/components/drafts/DraftsSheet';
 import DraftDiscardSheet from '@/components/drafts/DraftDiscardSheet';
 import { creationDraftService, DraftLimitError, MAX_DRAFTS_PER_KIND, type CreationDraft } from '@/lib/services/CreationDraftService';
 import CustomVideoPlayer from '@/components/media/CustomVideoPlayer';
+import UserAvatar from '@/components/ui/UserAvatar';
 const authService = AuthService.getInstance();
 const searchService = SearchService.getInstance();
 const MAX_LIME_VIDEO_DURATION_SECONDS = 30;
@@ -814,10 +815,9 @@ export default function CreateLimeModal({ isOpen, onClose, onSuccess, initialSho
                       onPress={() => handleSelectMentionUser(u.userName)}
                       style={[styles.mentionItem, { borderBottomColor: colors.border }]}
                     >
-                      <Image
-                        source={{ uri: u.profileImage || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=100' }}
-                        style={styles.mentionAvatar}
-                      />
+                      <View style={styles.mentionAvatar}>
+                        <UserAvatar userId={u.id} profileImage={u.profileImage} firstName={u.firstName || u.userName} size={28} />
+                      </View>
                       <View>
                         <Text style={styles.mentionUsername}>@{u.userName}</Text>
                         <Text style={[styles.mentionName, { color: colors.mutedText }]}>{u.firstName} {u.lastName}</Text>

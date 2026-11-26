@@ -98,7 +98,7 @@ export default function ProjectTeamPanel({ project, teamMembers, currentUserId, 
     const roleLabel = member.isOwner ? 'Owner' : ROLE_LABELS[member.role];
     return (
       <View key={member.id} style={styles.memberRow}>
-        <UserAvatar profileImage={member.avatar} firstName={member.name} size={40} />
+        <UserAvatar userId={member.id} profileImage={member.avatar} firstName={member.name} size={40} />
         <View style={{ flex: 1, minWidth: 0, gap: 3 }}>
           <Text numberOfLines={1} style={styles.memberName}>{member.name}{member.id === currentUserId ? ' (you)' : ''}</Text>
           <View style={styles.inline}>

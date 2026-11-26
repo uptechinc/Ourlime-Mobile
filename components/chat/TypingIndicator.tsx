@@ -60,11 +60,12 @@ function TypingDot({ index, color }: TypingDotProps) {
 
 type TypingIndicatorProps = {
   profileImage?: string | null;
+  userId?: string;
   firstName: string;
 };
 
 /** The other person's "typing…" bubble: three dots rising and falling in a wave (like WhatsApp). */
-export default function TypingIndicator({ profileImage, firstName }: TypingIndicatorProps) {
+export default function TypingIndicator({ profileImage, userId, firstName }: TypingIndicatorProps) {
   const { colors } = useAppTheme();
 
   return (
@@ -76,7 +77,7 @@ export default function TypingIndicator({ profileImage, firstName }: TypingIndic
       style={{ flexDirection: 'row', alignItems: 'flex-end', paddingHorizontal: 12, marginBottom: 6, marginTop: 2 }}
     >
       <View style={{ marginRight: 6, marginBottom: 2 }}>
-        <UserAvatar profileImage={profileImage ?? undefined} firstName={firstName} size={26} />
+        <UserAvatar userId={userId} profileImage={profileImage ?? undefined} firstName={firstName} size={26} />
       </View>
       <View
         style={{

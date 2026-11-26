@@ -61,7 +61,7 @@ export default function SuggestedUsersSection() {
               marginRight: 10,
             }}
           >
-            <UserAvatar profileImage={user.profileImage} firstName={user.firstName || user.userName} size={52} />
+            <UserAvatar userId={user.id} profileImage={user.profileImage} firstName={user.firstName || user.userName} size={52} />
             <Text numberOfLines={1} style={{ fontSize: 14, fontWeight: '700', color: colors.text, marginTop: 8, textAlign: 'center' }}>
               {user.firstName}
             </Text>

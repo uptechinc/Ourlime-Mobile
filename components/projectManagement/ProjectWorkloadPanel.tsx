@@ -59,7 +59,7 @@ export default function ProjectWorkloadPanel({ tasks, teamMembers, onSelectTask 
               <View key={workload.member.id} style={{ padding: 14, gap: 10, borderTopWidth: index === 0 ? 0 : 1, borderTopColor: colors.border }}>
                 <TouchableOpacity activeOpacity={0.75} onPress={() => setExpandedId(expanded ? null : workload.member.id)} style={{ gap: 10 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-                    <UserAvatar profileImage={workload.member.avatar} firstName={workload.member.name} size={38} />
+                    <UserAvatar userId={workload.member.id} profileImage={workload.member.avatar} firstName={workload.member.name} size={38} />
                     <View style={{ flex: 1 }}>
                       <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                         <Text numberOfLines={1} style={{ color: colors.text, fontSize: 14, fontWeight: '800', flexShrink: 1 }}>{workload.member.name}</Text>

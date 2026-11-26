@@ -683,7 +683,7 @@ export default function CommentsModal({
 				padding: highlightedTargetId === reply.id ? 6 : 0,
 			}}
 		>
-			<UserAvatar
+			<UserAvatar userId={reply.author.id}
 				profileImage={reply.author.profileImage}
 				firstName={reply.author.firstName || reply.author.userName}
 				size={30}
@@ -804,7 +804,7 @@ export default function CommentsModal({
 								}}
 							>
 								<View style={{ flexDirection: 'row', alignItems: 'center' }}>
-									<UserAvatar
+									<UserAvatar userId={post.user.id}
 										profileImage={post.user.profileImage}
 										firstName={post.user.firstName || post.user.userName}
 										size={38}
@@ -912,7 +912,7 @@ export default function CommentsModal({
 											padding: highlightedTargetId === comment.id ? 8 : 0,
 										}}
 									>
-										<UserAvatar
+										<UserAvatar userId={comment.author.id}
 											profileImage={comment.author.profileImage}
 											firstName={
 												comment.author.firstName || comment.author.userName

@@ -190,7 +190,7 @@ export default function BlogCommentsSection({
               ]}
             >
               <View style={styles.commentHeader}>
-                <UserAvatar
+                <UserAvatar userId={comment.userId}
                   profileImage={comment.authorAvatar}
                   firstName={comment.authorName}
                   size={36}
@@ -284,7 +284,7 @@ export default function BlogCommentsSection({
                       ]}
                     >
                       <View style={styles.replyHeader}>
-                        <UserAvatar
+                        <UserAvatar userId={reply.userId}
                           profileImage={reply.authorAvatar}
                           firstName={reply.authorName}
                           size={26}

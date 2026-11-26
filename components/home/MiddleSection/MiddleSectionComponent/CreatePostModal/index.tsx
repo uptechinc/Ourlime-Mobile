@@ -492,7 +492,7 @@ export default function CreatePostModal({ setTogglePostForm, userProfile, commun
               </View>
             ) : null}
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 18 }}>
-              <UserAvatar profileImage={userProfile.profilePicture} firstName={userProfile.firstName || userProfile.email} size={52} />
+              <UserAvatar userId={userProfile.uid} profileImage={userProfile.profilePicture} firstName={userProfile.firstName || userProfile.email} size={52} />
               <View style={{ flex: 1, marginLeft: 12 }}>
                 <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>{userProfile.firstName} {userProfile.lastName}</Text>
                 <View style={{ flexDirection: 'row', marginTop: 6 }}>

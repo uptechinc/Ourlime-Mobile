@@ -283,7 +283,7 @@ function Tutors({ instructors, showAll, onToggle, styles, colors }: TutorsProps)
         ].filter(Boolean).join(' · ');
         return (
           <View key={instructor.id} accessible accessibilityLabel={[instructor.name, instructor.specialties.join(', '), facts].filter(Boolean).join(', ')} style={styles.tutorRow}>
-            <UserAvatar profileImage={instructor.avatar} firstName={instructor.name} size={44} />
+            <UserAvatar userId={instructor.id} profileImage={instructor.avatar} firstName={instructor.name} size={44} />
             <View style={styles.flex}>
               <Text numberOfLines={1} style={styles.tutorName}>{instructor.name}</Text>
               <Text numberOfLines={1} style={styles.muted}>{instructor.specialties.join(', ') || 'Verified instructor'}</Text>

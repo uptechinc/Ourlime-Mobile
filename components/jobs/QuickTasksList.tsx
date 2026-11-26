@@ -49,7 +49,7 @@ function QuickTaskCard({ task, isApplied, onApply, onViewDetails }: QuickTaskCar
 
       <View style={styles.metaRow}><Timer size={14} color={colors.mutedText} /><Text numberOfLines={1} style={styles.meta}>{meta}</Text></View>
       <View style={styles.posterRow}>
-        <UserAvatar profileImage={task.creator?.profileImage} firstName={posterName} size={28} />
+        <UserAvatar userId={task.basic_info.userId} profileImage={task.creator?.profileImage} firstName={posterName} size={28} />
         <View style={styles.flex}><JobPosterLine name={posterName} isVerified={task.creator?.verificationStatus === 'verified'} /></View>
       </View>
       <JobTagRow tags={task.details.skills} />

@@ -309,7 +309,7 @@ export default function TaskDetailSheet({ task, project, teamMembers, milestones
                       const selected = task.assignedToAll || assignedIds.includes(member.id);
                       return (
                         <TouchableOpacity key={member.id} disabled={!canWrite || busy !== null} onPress={() => handleToggleAssignee(member.id)} accessibilityRole="checkbox" accessibilityState={{ checked: selected }} accessibilityLabel={member.id === currentUserId ? 'Me' : member.name} style={[chip(selected), { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 6 }]}>
-                          <UserAvatar profileImage={member.avatar} firstName={member.name} size={22} />
+                          <UserAvatar userId={member.id} profileImage={member.avatar} firstName={member.name} size={22} />
                           <Text style={{ color: selected ? '#ffffff' : colors.secondaryText, fontSize: 13, fontWeight: '700' }}>{member.id === currentUserId ? 'Me' : member.name}</Text>
                         </TouchableOpacity>
                       );
@@ -402,7 +402,7 @@ export default function TaskDetailSheet({ task, project, teamMembers, milestones
                   const isMine = authorId === currentUserId;
                   return (
                     <View key={comment.id} style={{ flexDirection: 'row', gap: 10 }}>
-                      <UserAvatar profileImage={comment.avatar || author?.avatar} firstName={comment.authorName || author?.name} size={32} />
+                      <UserAvatar userId={comment.userId || author?.id} profileImage={comment.avatar || author?.avatar} firstName={comment.authorName || author?.name} size={32} />
                       <View style={{ flex: 1, padding: 10, borderRadius: 12, backgroundColor: colors.control, gap: 4 }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                           <Text style={{ flex: 1, color: colors.text, fontSize: 13, fontWeight: '800' }}>{comment.authorName || author?.name || 'Member'}</Text>
@@ -435,7 +435,7 @@ export default function TaskDetailSheet({ task, project, teamMembers, milestones
                       <View style={{ borderRadius: 12, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface }}>
                         {mentionSuggestions.map((member) => (
                           <TouchableOpacity key={member.id} onPress={() => handleInsertMention(member)} style={{ flexDirection: 'row', alignItems: 'center', gap: 8, padding: 10 }}>
-                            <UserAvatar profileImage={member.avatar} firstName={member.name} size={24} />
+                            <UserAvatar userId={member.id} profileImage={member.avatar} firstName={member.name} size={24} />
                             <Text style={{ color: colors.text, fontSize: 13, fontWeight: '700' }}>{member.name}</Text>
                           </TouchableOpacity>
                         ))}
@@ -520,7 +520,7 @@ export default function TaskDetailSheet({ task, project, teamMembers, milestones
                   const member = memberById.get(entry.userId);
                   return (
                     <View key={entry.id} style={{ flexDirection: 'row', gap: 10, padding: 12, borderRadius: 12, backgroundColor: colors.control }}>
-                      <UserAvatar profileImage={member?.avatar} firstName={member?.name} size={30} />
+                      <UserAvatar userId={member?.id} profileImage={member?.avatar} firstName={member?.name} size={30} />
                       <View style={{ flex: 1 }}>
                         <Text style={{ color: colors.text, fontSize: 13, fontWeight: '800' }}>{auditLabel(entry.action)}</Text>
                         {entry.detail && entry.detail !== entry.action ? <Text style={{ color: colors.secondaryText, fontSize: 12 }}>{entry.detail}</Text> : null}

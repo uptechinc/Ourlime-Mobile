@@ -280,7 +280,7 @@ export default function PostCardSection({ post, isVisible = false, shouldLoadVid
             onPress={() => handleNavigateProfile()}
             style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}
           >
-            <UserAvatar profileImage={post.user.profileImage} firstName={post.user.firstName || post.user.userName} size={48} />
+            <UserAvatar userId={post.user.id} profileImage={post.user.profileImage} firstName={post.user.firstName || post.user.userName} size={48} />
             <View style={{ flex: 1, marginLeft: 12 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <Text style={{ color: colors.text, fontSize: 16, fontWeight: '700' }}>{post.user.firstName} {post.user.lastName}</Text>
@@ -426,7 +426,7 @@ export default function PostCardSection({ post, isVisible = false, shouldLoadVid
                         zIndex: 3 - idx,
                       }}
                     >
-                      <UserAvatar
+                      <UserAvatar userId={likedUser.id}
                         profileImage={likedUser.profileImage}
                         firstName={likedUser.firstName || likedUser.userName}
                         size={22}

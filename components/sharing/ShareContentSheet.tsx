@@ -242,7 +242,7 @@ export default function ShareContentSheet({
                   accessibilityState={{ checked: selected }}
                   style={[styles.recipientRow, { borderBottomColor: colors.border }]}
                 >
-                  <UserAvatar profileImage={recipient.profilePicture} firstName={recipient.firstName || 'U'} size={44} />
+                  <UserAvatar userId={recipient.uid} profileImage={recipient.profilePicture} firstName={recipient.firstName || 'U'} size={44} />
                   <View style={styles.recipientCopy}>
                     <Text style={[styles.recipientName, { color: colors.text }]} numberOfLines={1}>{recipient.firstName} {recipient.lastName}</Text>
                     <Text style={[styles.recipientHandle, { color: colors.mutedText }]} numberOfLines={1}>@{recipient.userName}</Text>

@@ -358,7 +358,7 @@ export default function UserProfileScreen() {
           <View style={{ backgroundColor: colors.surface, paddingHorizontal: 20, paddingBottom: 18, borderBottomWidth: 1, borderBottomColor: colors.border }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: -40, marginBottom: 12 }}>
               <TouchableOpacity activeOpacity={0.85} onPress={() => setAvatarViewerVisible(true)} accessibilityRole="imagebutton" accessibilityLabel={`View ${displayName}'s profile picture fullscreen`} style={{ width: 84, height: 84, borderRadius: 42, backgroundColor: colors.surface, padding: 3, elevation: 4 }}>
-                <UserAvatar profileImage={profile?.profilePicture} firstName={profile?.firstName || username} size={78} />
+                <UserAvatar userId={profile?.uid} profileImage={profile?.profilePicture} firstName={profile?.firstName || username} size={78} />
                 {presence && presence.status !== 'offline' ? <View accessibilityLabel={ACTIVITY_STATUS_LABELS[presence.status]} style={{ position: 'absolute', right: 2, bottom: 2, width: 16, height: 16, borderRadius: 8, backgroundColor: ACTIVITY_STATUS_COLORS[presence.status], borderWidth: 3, borderColor: colors.surface }} /> : null}
               </TouchableOpacity>
 

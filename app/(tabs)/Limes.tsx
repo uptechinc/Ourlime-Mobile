@@ -74,6 +74,7 @@ import { PlayfulFloatingHeart, type PlayfulFloatingHeartRef } from '@/components
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 import { useResourceStore } from '@/lib/store/useResourceStore';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
+import UserAvatar from '@/components/ui/UserAvatar';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 const authService = AuthService.getInstance();
@@ -223,12 +224,7 @@ function ReposterAvatar({
         floatStyle,
       ]}
     >
-      <Image
-        source={{ uri: reposter.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(reposter.firstName || 'L')}&background=10b981&color=fff` }}
-        style={styles.reposterBubbleAvatar}
-        contentFit="cover"
-        cachePolicy="memory-disk"
-      />
+      <UserAvatar userId={reposter.userId} profileImage={reposter.profileImage} firstName={reposter.firstName || reposter.userName || 'L'} size={44} />
       {reposterIndex === 0 ? (
         <View style={styles.reposterBadge}>
           <Repeat2 size={10} color="#ffffff" strokeWidth={3} />
@@ -1848,12 +1844,9 @@ export function ReelItem({
                 }}
                 style={styles.reposterSheetRow}
               >
-                <Image
-                  source={{ uri: reposter.profileImage || `https://ui-avatars.com/api/?name=${encodeURIComponent(reposter.firstName || 'L')}&background=10b981&color=fff` }}
-                  style={styles.reposterSheetAvatar}
-                  contentFit="cover"
-                  cachePolicy="memory-disk"
-                />
+                <View style={styles.reposterSheetAvatar}>
+                  <UserAvatar userId={reposter.userId} profileImage={reposter.profileImage} firstName={reposter.firstName || reposter.userName || 'L'} size={46} />
+                </View>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.reposterSheetName} numberOfLines={1}>
                     {reposter.userId === currentUserId ? 'You' : `${reposter.firstName} ${reposter.lastName}`.trim()}

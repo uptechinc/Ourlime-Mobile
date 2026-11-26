@@ -849,7 +849,7 @@ export default function AdminReportDetailRoute() {
 					<AdminListRow
 						title={author.name}
 						subtitle={author.username ? `@${author.username}` : undefined}
-						leading={{ kind: 'avatar', uri: author.profileImage ?? undefined, name: author.name }}
+						leading={{ kind: 'avatar', uri: author.profileImage ?? undefined, name: author.name, userId: author.id || undefined }}
 						onPress={author.username || author.id ? () => openProfile(author.username || author.id) : undefined}
 						accessibilityHint="Opens the profile"
 					/>
@@ -941,7 +941,7 @@ export default function AdminReportDetailRoute() {
 									title={report.reporterName}
 									subtitle={reporterUserData?.username ? `@${reporterUserData.username}` : undefined}
 									meta={report.reporterId ? `ID ${report.reporterId}` : undefined}
-									leading={{ kind: 'avatar', uri: reporterUserData?.profileImage ?? undefined, name: reporterUserData?.name ?? report.reporterName }}
+									leading={{ kind: 'avatar', uri: reporterUserData?.profileImage ?? undefined, name: reporterUserData?.name ?? report.reporterName, userId: report.reporterId || undefined }}
 									onPress={report.reporterId ? () => openProfile(reporterUserData?.username || report.reporterId) : undefined}
 									accessibilityHint="Opens the reporter's profile"
 								/>
@@ -952,7 +952,7 @@ export default function AdminReportDetailRoute() {
 									title={reportedUserData?.name || report.reportedUserId || 'Not supplied'}
 									subtitle={reportedUserData?.username ? `@${reportedUserData.username}` : undefined}
 									meta={report.reportedUserId ? `ID ${report.reportedUserId}` : undefined}
-									leading={{ kind: 'avatar', uri: reportedUserData?.profileImage ?? undefined, name: reportedUserData?.name ?? 'User' }}
+									leading={{ kind: 'avatar', uri: reportedUserData?.profileImage ?? undefined, name: reportedUserData?.name ?? 'User', userId: report.reportedUserId || undefined }}
 									onPress={report.reportedUserId ? () => openProfile(reportedUserData?.username || report.reportedUserId) : undefined}
 									accessibilityHint="Opens the reported user's profile"
 								/>

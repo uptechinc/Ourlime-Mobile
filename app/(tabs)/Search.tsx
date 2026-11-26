@@ -273,7 +273,7 @@ export default function SearchScreen() {
                     borderColor: colors.border,
                   }}
                 >
-                  <UserAvatar profileImage={user.profilePicture} firstName={user.firstName || user.userName} size={48} />
+                  <UserAvatar userId={user.uid} profileImage={user.profilePicture} firstName={user.firstName || user.userName} size={48} />
                   <View style={{ flex: 1, marginLeft: 12, marginRight: 8 }}>
                     <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }}>
                       {user.firstName} {user.lastName}

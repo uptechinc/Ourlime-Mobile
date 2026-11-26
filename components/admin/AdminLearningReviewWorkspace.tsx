@@ -234,7 +234,7 @@ function InstructorCard({ instructor, onDecide }: InstructorCardProps) {
       subtitle={APPLICATION_TYPE_LABELS[instructor.applicationType] ?? humanize(instructor.applicationType)}
       meta={meta}
       status={{ label: 'Waiting for review', tone: 'pending' }}
-      leading={instructor.avatar ? { kind: 'avatar', uri: instructor.avatar, name: instructor.name } : { kind: 'icon', name: 'award' }}
+      leading={{ kind: 'avatar', uri: instructor.avatar || undefined, name: instructor.name, userId: instructor.id }}
       details={[
         { label: 'Qualification', value: instructor.highestQualification },
         { label: 'Experience', value: formatPlural(instructor.yearsOfExperience, 'year') },

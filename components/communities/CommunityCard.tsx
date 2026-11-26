@@ -6,6 +6,7 @@ import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { ensureMediaUrl } from '@/lib/helpers/mediaUrl';
 import type { CommunityCardModel, CommunityDirectoryViewMode } from '@/lib/types/community';
 import { failedMediaUrls } from '@/lib/helpers/failedMediaUrls';
+import UserAvatar from '@/components/ui/UserAvatar';
 
 type CommunityCardProps = {
   community: CommunityCardModel;
@@ -78,7 +79,7 @@ export default function CommunityCard({ community, viewMode, busy, onOpen, onMem
           <Heart size={14} color="#ec4899" style={{ marginLeft: 15 }} /><Text style={{ marginLeft: 5, color: colors.secondaryText, fontWeight: '800', fontSize: 12 }}>{community.likeCount.toLocaleString()}</Text>
           <Text style={{ marginLeft: 15, color: colors.mutedText, fontSize: 11 }}>{community.postCount.toLocaleString()} {community.postCount === 1 ? 'post' : 'posts'}</Text>
           <View style={{ flex: 1 }} />
-          {community.topMembers.slice(0, 3).map((member, index) => member.profilePicture ? <CachedImage key={member.userId} uri={member.profilePicture} recyclingKey={`community-member-${member.userId}-${member.profilePicture}`} style={{ width: 23, height: 23, borderRadius: 12, marginLeft: index === 0 ? 0 : -7, borderWidth: 2, borderColor: colors.surface }} contentFit="cover" /> : <View key={member.userId} style={{ width: 23, height: 23, borderRadius: 12, marginLeft: index === 0 ? 0 : -7, borderWidth: 2, borderColor: colors.surface, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.control }}><Text style={{ color: colors.mutedText, fontSize: 9, fontWeight: '900' }}>{(member.firstName || member.userName).charAt(0).toUpperCase()}</Text></View>)}
+          {community.topMembers.slice(0, 3).map((member, index) => <View key={member.userId} style={{ marginLeft: index === 0 ? 0 : -7, borderRadius: 13, borderWidth: 2, borderColor: colors.surface }}><UserAvatar userId={member.userId} profileImage={member.profilePicture} firstName={member.firstName || member.userName} size={23} /></View>)}
         </View>
         {community.friendMemberCount > 0 ? <Text style={{ marginTop: 8, color: colors.accentText, fontSize: 11, fontWeight: '700' }}>{community.friendMemberCount} {community.friendMemberCount === 1 ? 'friend is' : 'friends are'} here</Text> : null}
         <View style={{ flexDirection: 'row', gap: 8, marginTop: 12 }}>

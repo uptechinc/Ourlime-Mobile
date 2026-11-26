@@ -538,7 +538,7 @@ export default function EditPostModal({ visible, post, currentUserId, onClose, o
 												onPress={() => handleSelectMention(user)}
 												style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: colors.border }}
 											>
-												<UserAvatar profileImage={user.profileImage} firstName={user.firstName} size={28} />
+												<UserAvatar userId={user.id} profileImage={user.profileImage} firstName={user.firstName} size={28} />
 												<View style={{ marginLeft: 10, flex: 1 }}>
 													<Text style={{ fontSize: 13, fontWeight: '700', color: colors.text }}>
 														{user.firstName} {user.lastName}

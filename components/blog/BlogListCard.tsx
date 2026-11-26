@@ -42,7 +42,7 @@ export default function BlogListCard({ blog, isLiked, likesCount, onPress, onLik
         {blog.excerpt ? <Text style={[styles.excerpt, { color: colors.secondaryText }]} numberOfLines={3}>{stripHtml(blog.excerpt)}</Text> : null}
 
         <View style={styles.authorRow}>
-          <UserAvatar profileImage={blog.author.avatar} firstName={blog.author.name} size={28} />
+          <UserAvatar userId={blog.author.id} profileImage={blog.author.avatar} firstName={blog.author.name} size={28} />
           <View style={{ flex: 1 }}>
             <Text style={[styles.authorName, { color: colors.text }]} numberOfLines={1}>{blog.author.name}</Text>
             <View style={styles.metaRow}>

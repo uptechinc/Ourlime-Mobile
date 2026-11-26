@@ -148,7 +148,7 @@ export function ProjectAvatarStack({ members, max = 4, size = 28 }: AvatarStackP
   const extra = members.length - shown.length;
   return <View style={{ flexDirection: 'row', alignItems: 'center' }} accessible accessibilityLabel={`${members.length} ${members.length === 1 ? 'member' : 'members'}`}>
     {shown.map((member, index) => <View key={member.id} style={{ marginLeft: index === 0 ? 0 : -8, borderRadius: size, borderWidth: 2, borderColor: colors.surface }}>
-      <UserAvatar profileImage={member.avatar} firstName={member.name} size={size} />
+      <UserAvatar userId={member.id} profileImage={member.avatar} firstName={member.name} size={size} />
     </View>)}
     {extra > 0 ? <View style={{ marginLeft: -8, width: size + 4, height: size + 4, borderRadius: size, borderWidth: 2, borderColor: colors.surface, backgroundColor: colors.control, alignItems: 'center', justifyContent: 'center' }}>
       <Text style={{ color: colors.secondaryText, fontSize: 11, fontWeight: '700' }}>+{extra}</Text>

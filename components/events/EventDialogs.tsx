@@ -193,7 +193,7 @@ export function RegistrationsDialog({ visible, questions, registrations, onClose
       {registrations.length === 0 ? <Text style={styles.text}>No one has answered the registration questions yet.</Text> : registrations.map((registration) => (
         <View key={registration.userId} style={styles.registration}>
           <View style={styles.row}>
-            <UserAvatar profileImage={registration.image} firstName={registration.name} size={32} />
+            <UserAvatar userId={registration.userId} profileImage={registration.image} firstName={registration.name} size={32} />
             <Text style={[styles.label, styles.flex]}>{registration.name}</Text>
           </View>
           {questions.map((question) => (

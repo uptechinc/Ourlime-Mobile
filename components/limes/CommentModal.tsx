@@ -447,7 +447,7 @@ export default function CommentModal({
 
     return (
       <View style={styles.commentItem}>
-        <UserAvatar
+        <UserAvatar userId={comment.userId}
           profileImage={comment.profileImage}
           firstName={comment.firstName || comment.userName || 'U'}
           size={36}
@@ -573,7 +573,7 @@ export default function CommentModal({
                 const replyEditing = editingId === reply.id;
                 return (
                   <View key={reply.id} style={styles.subReplyItem}>
-                    <UserAvatar
+                    <UserAvatar userId={reply.userId}
                       profileImage={reply.profileImage}
                       firstName={reply.firstName || reply.userName || 'U'}
                       size={26}

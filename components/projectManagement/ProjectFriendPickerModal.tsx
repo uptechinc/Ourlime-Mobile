@@ -123,7 +123,7 @@ export default function ProjectFriendPickerModal({
 
     return (
       <View style={[styles.friendRow, { borderBottomColor: colors.border }]}>
-        <UserAvatar
+        <UserAvatar userId={item.id}
           profileImage={item.profileImage}
           firstName={item.firstName || item.userName || 'User'}
           size={42}

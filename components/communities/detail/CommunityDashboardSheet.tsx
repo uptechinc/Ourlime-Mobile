@@ -36,7 +36,7 @@ import type {
 } from '@/lib/types/community';
 import type { CommunityReportAction } from '@/lib/services/CommunityDashboardService';
 import type { ResourceState } from '@/lib/types/resourceState';
-import CachedImage from '@/components/ui/CachedImage';
+import UserAvatar from '@/components/ui/UserAvatar';
 import SwipeDismissSurface from '@/components/ui/SwipeDismissSurface';
 
 type DashboardTab =
@@ -661,36 +661,7 @@ export default function CommunityDashboardSheet({
 												borderColor: colors.border,
 											}}
 										>
-											{member.profilePicture ? (
-												<CachedImage
-													uri={member.profilePicture}
-													recyclingKey={`dashboard-member-${member.userId}-${member.profilePicture}`}
-													style={{ width: 40, height: 40, borderRadius: 20 }}
-													contentFit="cover"
-												/>
-											) : (
-												<View
-													style={{
-														width: 40,
-														height: 40,
-														borderRadius: 20,
-														alignItems: 'center',
-														justifyContent: 'center',
-														backgroundColor: colors.successSurface,
-													}}
-												>
-													<Text
-														style={{
-															color: colors.accentText,
-															fontWeight: '900',
-														}}
-													>
-														{(member.firstName || member.userName)
-															.charAt(0)
-															.toUpperCase()}
-													</Text>
-												</View>
-											)}
+											<UserAvatar userId={member.userId} profileImage={member.profilePicture} firstName={member.firstName || member.userName} size={40} />
 											<View style={{ flex: 1, marginLeft: 9 }}>
 												<Text style={{ color: colors.text, fontWeight: '800' }}>
 													{`${member.firstName} ${member.lastName}`.trim() ||

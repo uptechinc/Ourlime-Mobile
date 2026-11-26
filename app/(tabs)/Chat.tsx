@@ -582,7 +582,7 @@ export default function ChatTabScreen() {
 
                   {/* Avatar with online dot */}
                   <View style={{ position: 'relative' }}>
-                    <UserAvatar profileImage={user.profilePicture} firstName={user.firstName ?? user.userName ?? 'U'} size={52} />
+                    <UserAvatar userId={user.uid} profileImage={user.profilePicture} firstName={user.firstName ?? user.userName ?? 'U'} size={52} />
                     <View
                       accessibilityLabel={`${user.firstName ?? 'Friend'} is ${ACTIVITY_STATUS_LABELS[activityStatus].toLowerCase()}`}
                       style={{
@@ -686,7 +686,7 @@ export default function ChatTabScreen() {
                   onPress={() => { setComposeVisible(false); handleOpenChat(friend); }}
                   style={{ flexDirection: 'row', alignItems: 'center', padding: 13, borderRadius: 15, marginBottom: 8, backgroundColor: colors.surface, borderWidth: 1, borderColor: colors.border }}
                 >
-                  <UserAvatar profileImage={friend.profilePicture} firstName={friend.firstName || friend.userName} size={46} />
+                  <UserAvatar userId={friend.uid} profileImage={friend.profilePicture} firstName={friend.firstName || friend.userName} size={46} />
                   <View style={{ flex: 1, marginLeft: 11 }}>
                     <Text style={{ color: colors.text, fontWeight: '800' }}>{friend.firstName} {friend.lastName}</Text>
                     <Text style={{ color: colors.mutedText, marginTop: 2 }}>@{friend.userName}</Text>

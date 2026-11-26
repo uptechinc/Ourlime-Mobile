@@ -59,7 +59,7 @@ export default function AppDrawerNav({ isOpen, onClose, userProfile }: AppDrawer
         <SafeAreaView edges={['top', 'bottom', 'left', 'right']} style={[styles.drawerContent, themeStyles.drawerCard]}>
           {/* Header Profile Section */}
           <View style={[styles.profileHeader, themeStyles.divider]}>
-            <UserAvatar
+            <UserAvatar userId={userProfile?.uid}
               profileImage={userProfile?.profilePicture}
               firstName={userProfile?.firstName || 'U'}
               size={54}

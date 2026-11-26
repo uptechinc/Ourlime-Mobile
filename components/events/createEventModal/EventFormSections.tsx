@@ -257,14 +257,14 @@ export function EventCoOrganizersField({ ownerId, coOrganizers, onChange }: { ow
     </View> : <Text style={styles.hint}>You can add up to {MAX_CO_ORGANIZERS} co-organizers.</Text>}
     {results.length ? <View style={styles.results}>
       {results.map((person) => <TouchableOpacity key={person.id} accessibilityRole="button" accessibilityLabel={`Add ${person.userName} as a co-organizer`} onPress={() => handleAdd(person)} style={styles.resultRow}>
-        <UserAvatar profileImage={person.profileImage} firstName={person.firstName || person.userName} size={30} />
+        <UserAvatar userId={person.id} profileImage={person.profileImage} firstName={person.firstName || person.userName} size={30} />
         <View style={styles.flex}><Text style={styles.resultName}>{[person.firstName, person.lastName].filter(Boolean).join(' ') || person.userName}</Text><Text style={styles.hint}>@{person.userName}</Text></View>
         <Plus size={16} color={colors.accent} />
       </TouchableOpacity>)}
     </View> : null}
     {coOrganizers.map((coOrganizer) => <View key={coOrganizer.userId} style={styles.box}>
       <View style={styles.row}>
-        <UserAvatar profileImage={coOrganizer.image} firstName={coOrganizer.name || coOrganizer.userName || 'Co-organizer'} size={30} />
+        <UserAvatar userId={coOrganizer.userId} profileImage={coOrganizer.image} firstName={coOrganizer.name || coOrganizer.userName || 'Co-organizer'} size={30} />
         <View style={styles.flex}><Text style={styles.resultName}>{coOrganizer.name || coOrganizer.userName}</Text>{coOrganizer.userName ? <Text style={styles.hint}>@{coOrganizer.userName}</Text> : null}</View>
         <TouchableOpacity accessibilityRole="button" accessibilityLabel={`Remove ${coOrganizer.name || coOrganizer.userName}`} hitSlop={10} onPress={() => onChange(coOrganizers.filter((item) => item.userId !== coOrganizer.userId))}><X size={18} color={colors.icon} /></TouchableOpacity>
       </View>

@@ -64,7 +64,7 @@ export default function BlogAuthorCard({ author }: BlogAuthorCardProps) {
   return (
     <View style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <TouchableOpacity activeOpacity={0.7} onPress={navigateToProfile} style={styles.topRow}>
-        <UserAvatar profileImage={author.avatar} firstName={author.name} size={54} />
+        <UserAvatar userId={author.id} profileImage={author.avatar} firstName={author.name} size={54} />
         <View style={styles.nameBlock}>
           <View style={styles.nameRow}>
             <Text style={[styles.name, { color: colors.text }]} numberOfLines={1}>

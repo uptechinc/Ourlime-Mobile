@@ -258,7 +258,7 @@ export default function CreateTaskSheet({ visible, project, currentUserId, teamM
                     const selected = assignees.includes(member.id);
                     return (
                       <TouchableOpacity key={member.id} onPress={() => setAssignees((current) => toggle(current, member.id))} style={[chip(selected), { flexDirection: 'row', alignItems: 'center', gap: 6, paddingLeft: 6 }]}>
-                        <UserAvatar profileImage={member.avatar} firstName={member.name} size={22} />
+                        <UserAvatar userId={member.id} profileImage={member.avatar} firstName={member.name} size={22} />
                         <Text style={chipText(selected)}>{member.id === currentUserId ? 'Me' : member.name}</Text>
                       </TouchableOpacity>
                     );

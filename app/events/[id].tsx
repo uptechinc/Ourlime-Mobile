@@ -265,7 +265,7 @@ export default function EventDetailScreen() {
             ) : null}
             {organizer ? (
               <TouchableOpacity accessibilityRole="button" disabled={!organizer.userName} onPress={openProfile} style={styles.infoRow}>
-                <UserAvatar profileImage={organizer.profileImage} firstName={organizer.name} size={40} />
+                <UserAvatar userId={organizer.id} profileImage={organizer.profileImage} firstName={organizer.name} size={40} />
                 <View style={styles.flex}>
                   <Text style={styles.infoTitle}>Organizer</Text>
                   <View style={styles.inline}>

@@ -368,7 +368,7 @@ function MessageBubble({ msg, currentUserId, friend, onReply, onDelete, onReact,
         >
             {!isOwn && (
                 <View style={{ marginRight: 6, marginBottom: 2 }}>
-                    <UserAvatar profileImage={friend.profilePicture} firstName={friend.firstName ?? 'U'} size={26} />
+                    <UserAvatar userId={friend.uid} profileImage={friend.profilePicture} firstName={friend.firstName ?? 'U'} size={26} />
                 </View>
             )}
 
@@ -1407,7 +1407,7 @@ export default function ChatPage() {
                         style={{ flexDirection: 'row', alignItems: 'center', flex: 1, marginRight: 4 }}
                         onPress={() => router.push({ pathname: '/profile/[username]', params: { username: friend.userName } })}
                     >
-                        <UserAvatar profileImage={friend.profilePicture} firstName={friend.firstName ?? 'U'} size={38} />
+                        <UserAvatar userId={friend.uid} profileImage={friend.profilePicture} firstName={friend.firstName ?? 'U'} size={38} />
                         <View style={{ marginLeft: 10, flex: 1 }}>
                             <Text style={{ fontSize: 16, fontWeight: '700', color: colors.text }} numberOfLines={1}>
                                 {friend.firstName} {friend.lastName}
@@ -1498,7 +1498,7 @@ export default function ChatPage() {
                             <>
                                 {/* Right under the newest message; not inside a jumped-to window of older messages. */}
                                 {isPeerTyping && timelineMode === 'live' && friend ? (
-                                    <TypingIndicator profileImage={friend.profilePicture} firstName={friend.firstName ?? 'Friend'} />
+                                    <TypingIndicator userId={friend.uid} profileImage={friend.profilePicture} firstName={friend.firstName ?? 'Friend'} />
                                 ) : null}
                                 {loadingNewer ? <ActivityIndicator style={{ marginVertical: 10 }} color={colors.accent} /> : null}
                                 {callElsewhereNotice ? (

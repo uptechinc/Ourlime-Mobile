@@ -172,7 +172,7 @@ export function ForwardMessageModal({
                     borderBottomColor: colors.border,
                   }}
                 >
-                  <UserAvatar profileImage={friend.profilePicture} firstName={friend.firstName ?? 'U'} size={44} />
+                  <UserAvatar userId={friend.uid} profileImage={friend.profilePicture} firstName={friend.firstName ?? 'U'} size={44} />
                   <View style={{ flex: 1, marginLeft: 12 }}>
                     <Text style={{ fontSize: 15, fontWeight: '700', color: colors.text }}>
                       {friend.firstName} {friend.lastName}
