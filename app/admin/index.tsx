@@ -106,6 +106,38 @@ const ATTENTION_CARDS: readonly AttentionCard[] = [
 	{ key: 'support', label: 'Support tickets', icon: 'life-buoy', route: '/admin/support' },
 ];
 
+/** Short nouns for the "what's waiting" breakdown: [one, many]. */
+const QUEUE_NOUNS: { [key in PendingApprovalCategoryKey]: [string, string] } = {
+	couriers: ['courier', 'couriers'],
+	sellers: ['seller', 'sellers'],
+	products: ['listing', 'listings'],
+	pets: ['pet listing', 'pet listings'],
+	jobs: ['job', 'jobs'],
+	courses: ['course', 'courses'],
+	instructors: ['instructor', 'instructors'],
+	identity: ['ID check', 'ID checks'],
+	beta: ['tester application', 'tester applications'],
+	reports: ['report', 'reports'],
+	appeals: ['appeal', 'appeals'],
+	childSafety: ['child-safety case', 'child-safety cases'],
+	support: ['support ticket', 'support tickets'],
+};
+
+/**
+ * "13 reports · 9 jobs · 3 more": the biggest queues behind the pending total, so the total is not read as a
+ * separate number from the report and ticket cards (those queues are part of it).
+ */
+function describePendingBreakdown(snapshot: PendingApprovalsSnapshot | null): string | null {
+	if (!snapshot) return null;
+	const waiting = snapshot.queues
+		.flatMap((queue) => (queue.status === 'ready' && queue.count > 0 ? [{ key: queue.key, count: queue.count }] : []))
+		.sort((first, second) => second.count - first.count);
+	if (waiting.length === 0) return null;
+	const shown = waiting.slice(0, 2).map(({ key, count }) => `${count} ${QUEUE_NOUNS[key][count === 1 ? 0 : 1]}`);
+	const rest = waiting.slice(2).reduce((sum, queue) => sum + queue.count, 0);
+	return [...shown, ...(rest > 0 ? [`${rest} more`] : [])].join(' · ');
+}
+
 /** Per-queue counts from the snapshot the pending-approvals badge already loads (no extra fetch). */
 function usePendingSnapshot(): PendingApprovalsSnapshot | null {
 	const [snapshot, setSnapshot] = useState<PendingApprovalsSnapshot | null>(() => pendingApprovalsService.peek());
@@ -184,6 +216,7 @@ export default function AdminPortalScreen() {
 	];
 
 	const pendingLabel = formatPendingCount(pendingApprovals.total, pendingApprovals.totalIsLowerBound);
+	const pendingBreakdown = describePendingBreakdown(pendingSnapshot);
 	const showFullError = Boolean(error) && !hasStats;
 
 	const renderAttentionCard = (card: AttentionCard) => {
@@ -226,12 +259,12 @@ export default function AdminPortalScreen() {
 			<View style={{ gap: space.xl }}>
 				{error && hasStats ? <AdminState kind="inlineError" message={error} onRetry={() => void fetchAdminStats(true)} /> : null}
 
-				<AdminSection title="Needs attention">
+				<AdminSection title="Needs attention" description="The total counts every queue, including the reports, child-safety cases and tickets below.">
 					<AdminListRow
-						title="Pending approvals"
-						subtitle={pendingApprovals.total > 0 ? 'Registrations, listings, reports and more' : 'Nothing waiting for approval'}
+						title="Everything waiting"
+						subtitle={pendingApprovals.total > 0 ? pendingBreakdown ?? 'Listings, applications, reports and more' : 'Nothing waiting for review'}
 						leading={{ kind: 'icon', name: 'check-square', tone: pendingApprovals.total > 0 ? 'pending' : 'neutral' }}
-						status={pendingApprovals.total > 0 ? { label: `${pendingLabel} waiting`, tone: 'pending' } : undefined}
+						status={pendingApprovals.total > 0 ? { label: `${pendingLabel} in total`, tone: 'pending' } : undefined}
 						accessibilityHint="Opens the pending approvals queue"
 						onPress={() => router.push('/admin/approvals' as Href)}
 					/>
@@ -244,7 +277,7 @@ export default function AdminPortalScreen() {
 						<AdminStatCard label="Posts" icon="file-text" value={stats.postsCount.toLocaleString()} />
 						<AdminStatCard label="Limes" icon="video" value={stats.reelsCount.toLocaleString()} />
 						<AdminStatCard label="Events" icon="calendar" value={stats.eventsCount.toLocaleString()} />
-						<AdminStatCard label="Reports" icon="flag" value={stats.reportsCount.toLocaleString()} onPress={() => router.push('/admin/moderation' as Href)} />
+						<AdminStatCard label="All reports" hint="Ever filed, including resolved" icon="flag" value={stats.reportsCount.toLocaleString()} onPress={() => router.push('/admin/moderation' as Href)} />
 					</AdminStatGrid>
 				</AdminSection>
 
