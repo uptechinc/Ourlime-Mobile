@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Linking, Text, TouchableOpacity, View, AppState, type KeyboardTypeOptions } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import MarketFormModal, { MarketButton, MarketField, MarketListField } from './MarketFormModal';
+import { SellerDocumentRow, SellerTermsRow } from './SellerApplicationParts';
 import { sellerVerificationService, type SellerApplicationErrors } from '@/lib/services/SellerVerificationService';
 import { useAppTheme } from '@/lib/contexts/ThemeContext';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
@@ -40,6 +41,13 @@ const SELLER_FILE_LABELS: Record<SellerFileKind, string> = {
   proofOfAddress: 'Proof of address',
   businessRegistration: 'Business registration',
   logo: 'Logo',
+};
+/** What each document is, shown until a file is added. */
+const SELLER_FILE_HINTS: Record<SellerFileKind, string> = {
+  governmentId: 'Passport, national ID or driver\'s permit',
+  proofOfAddress: 'Utility bill or bank statement, last 3 months',
+  businessRegistration: 'Certificate of incorporation or registration',
+  logo: 'Square image shown on your store',
 };
 const formatApplicationStatus = (status: string): string => {
   const label = status.replace(/_/g, ' ');
@@ -135,27 +143,43 @@ export default function SellerApplicationModal({ onClose }: SellerApplicationMod
             </TouchableOpacity>;
           })}
         </View>
-        {(['governmentId', 'proofOfAddress', ...(form.isBusiness ? ['businessRegistration' as const] : []), 'logo'] as SellerFileKind[]).map((kind) => <View key={kind} style={{ gap: 8 }}>
-          <Text style={{ color: colors.text }}>{SELLER_FILE_LABELS[kind]}: {form.files.find((file) => file.kind === kind)?.name ?? 'No file selected'}</Text>
-          {pending.find((entry) => entry.kind === kind) ? <>
-            <Text style={{ color: colors.secondaryText }}>Pending: {pending.find((entry) => entry.kind === kind)?.name}</Text>
-            <MarketButton label="Retry saved upload" onPress={() => void action(async () => {
-              const file = await sellerVerificationService.retryUpload(ownerId, kind, (percent) => setStatus(`Uploading ${percent}%`));
-              const latest = current.current;
-              if (!latest) return;
-              await save({ ...latest, files: [...latest.files.filter((entry) => entry.kind !== kind), file] });
-              await sellerVerificationService.discardUpload(ownerId, kind);
-            })} />
-            <MarketButton label="Remove pending upload" onPress={() => void action(() => sellerVerificationService.discardUpload(ownerId, kind))} />
-          </> : null}
-          <MarketButton label={`Choose / replace ${SELLER_FILE_LABELS[kind]}`} disabled={busy} onPress={() => void action(() => pick(kind))} />
-          {fieldErrors[kind] ? <Text style={{ color: colors.destructive }}>{fieldErrors[kind]}</Text> : null}
-          {form.files.find((file) => file.kind === kind) ? <MarketButton label="Remove file" onPress={() => { void save({ ...form, files: form.files.filter((file) => file.kind !== kind) }).catch(() => {}); }} /> : null}
-        </View>)}
-        <MarketButton label="Read seller terms" onPress={() => setTerms(!terms)} />
-        {terms ? <><Text style={{ color: colors.text }}>Provide accurate information and lawful listings. Your identity documents are private and are deleted 30 days after a final approval or rejection. Re-review requires fresh documents. Payments and payouts are not available in this release.</Text><MarketButton label="Open full terms" onPress={() => { void Linking.openURL('https://ourlime.com/terms-and-conditions').catch(() => setError('Open ourlime.com/terms-and-conditions in your browser. Your application is saved.')); }} /></> : null}
-        <MarketButton label={form.acceptedTerms ? 'Terms accepted (tap to undo)' : 'Accept seller terms'} onPress={() => { void save({ ...form, acceptedTerms: !form.acceptedTerms }).catch(() => {}); }} />
-        {fieldErrors.acceptedTerms ? <Text style={{ color: colors.destructive }}>{fieldErrors.acceptedTerms}</Text> : null}
+        <View style={{ gap: 10, marginTop: 8 }}>
+          <View style={{ gap: 2 }}>
+            <Text style={{ color: colors.text, fontWeight: '700', fontSize: 16 }}>Documents</Text>
+            <Text style={{ color: colors.secondaryText, fontSize: 13 }}>JPG, PNG or PDF. Only reviewers see them.</Text>
+          </View>
+          {(['governmentId', 'proofOfAddress', ...(form.isBusiness ? ['businessRegistration' as const] : []), 'logo'] as SellerFileKind[]).map((kind) => (
+            <SellerDocumentRow
+              key={kind}
+              label={SELLER_FILE_LABELS[kind]}
+              hint={SELLER_FILE_HINTS[kind]}
+              required={kind !== 'logo'}
+              isImage={kind === 'logo'}
+              fileName={form.files.find((file) => file.kind === kind)?.name ?? null}
+              pendingName={pending.find((entry) => entry.kind === kind)?.name ?? null}
+              error={fieldErrors[kind]}
+              disabled={busy}
+              onChoose={() => void action(() => pick(kind))}
+              onRemove={() => { void save({ ...form, files: form.files.filter((file) => file.kind !== kind) }).catch(() => {}); }}
+              onRetryPending={() => void action(async () => {
+                const file = await sellerVerificationService.retryUpload(ownerId, kind, (percent) => setStatus(`Uploading ${percent}%`));
+                const latest = current.current;
+                if (!latest) return;
+                await save({ ...latest, files: [...latest.files.filter((entry) => entry.kind !== kind), file] });
+                await sellerVerificationService.discardUpload(ownerId, kind);
+              })}
+              onDiscardPending={() => void action(() => sellerVerificationService.discardUpload(ownerId, kind))}
+            />
+          ))}
+        </View>
+        <SellerTermsRow
+          accepted={form.acceptedTerms}
+          expanded={terms}
+          error={fieldErrors.acceptedTerms}
+          onToggleAccepted={() => { void save({ ...form, acceptedTerms: !form.acceptedTerms }).catch(() => {}); }}
+          onToggleExpanded={() => setTerms(!terms)}
+          onOpenFullTerms={() => { void Linking.openURL('https://ourlime.com/terms-and-conditions').catch(() => setError('Open ourlime.com/terms-and-conditions in your browser. Your application is saved.')); }}
+        />
         {/* Shown beside Submit as well as at the top, so the reason is on screen where the button was tapped. */}
         {error ? <Text accessibilityRole="alert" style={{ color: colors.destructive }}>{error}</Text> : null}
         <MarketButton label="Submit for review" disabled={busy} onPress={() => void action(async () => {

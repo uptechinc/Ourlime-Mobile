@@ -17,7 +17,8 @@ test('E-Hub keeps its own catalog; Market products open the detail route with di
 });
 
 test('seller application contains the document fields without payout collection', () => {
-  const application = read('components/market/SellerApplicationModal.tsx');
+  // The document rows and terms checkbox live in SellerApplicationParts.tsx.
+  const application = read('components/market/SellerApplicationModal.tsx') + read('components/market/SellerApplicationParts.tsx');
   for (const required of ['name', 'email', 'phone', 'storeName', 'description', 'governmentId', 'proofOfAddress', 'businessRegistration', 'logo', 'Categories', 'Accept seller terms', 'Submit for review']) {
     assert.match(application, new RegExp(required));
   }
