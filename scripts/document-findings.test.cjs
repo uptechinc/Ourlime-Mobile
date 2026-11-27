@@ -31,7 +31,8 @@ test('Market exposes durable cart, checkout, discussion and support controls', (
   const checkout = read('components/market/checkout/MarketCheckoutScreen.tsx');
   assert.match(cart, /Save Cart \/ Retry sync/);
   assert.match(cart, /Proceed to checkout/);
-  assert.match(market, /Marketplace support/);
+  // The support shortcut is one of the quick-action tiles at the top of the Market.
+  assert.match(market, /key: 'support', title: 'Support'/);
   for (const required of ['Full name', 'Phone number', 'Buyer Acknowledgment', 'Place Order & Pay']) {
     assert.match(checkout, new RegExp(required));
   }
@@ -46,13 +47,13 @@ test('E-Projects and Blogs do not advertise stale unavailable badges when enable
   assert.match(access, /rawBadge === 'Unavailable' \|\| rawBadge === 'Coming Soon' \? undefined/);
 });
 
-test('task and blog creation both use the durable Save Draft editor', () => {
+// Tasks moved to CreateTaskSheet and blogs to an autosaving editor (web parity, Oct 2026); ContentDraftModal is unused.
+test('task creation uses the task sheet and blog creation autosaves its draft', () => {
   const task = read('app/projectManagement/[id]/index.tsx');
   const blog = read('components/blogs/CreateBlogModal.tsx');
-  const draft = read('components/drafts/ContentDraftModal.tsx');
-  assert.match(task, /kind="task"/);
-  assert.match(blog, /kind="blog"/);
-  assert.match(draft, /label="Save Draft"/);
+  assert.match(task, /<CreateTaskSheet/);
+  assert.match(blog, /blogService\.saveDraft\(/);
+  assert.match(blog, /blogService\.loadDraft\(/);
 });
 
 test('blog dates, likes and comment navigation use the repaired implementations', () => {
