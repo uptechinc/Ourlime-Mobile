@@ -261,6 +261,21 @@ export class SavedService {
    * Uploads product favorites that were kept only on this device. Each id is saved once (existing saves are
    * left alone). Returns how many were uploaded.
    */
+  /** Title and photo of a published E-Hub product through the E-Hub server API; null when unavailable. */
+  private async readEHubProductSnapshot(productId: string): Promise<SaveTarget['snapshot'] | null> {
+    try {
+      // Loaded on demand so SavedService and EHubService don't import each other at startup.
+      const { eHubService } = await import('./EHubService');
+      const detail = await eHubService.getProduct(productId);
+      const product = detail?.product;
+      if (!product?.title) return null;
+      return { title: product.title, thumbnail: product.imageUrl ?? product.imageUrls[0] ?? null };
+    } catch (error: unknown) {
+      console.warn('[SavedService.readEHubProductSnapshot] Error:', error instanceof Error ? error.message : error);
+      return null;
+    }
+  }
+
   public async importDeviceFavorites(type: 'market_product' | 'ehub_product', productIds: string[]): Promise<number> {
     const userId = this.requireUserId();
     const ids = [...new Set(productIds.filter((productId) => SavedItemCatalog.isValidItemId(productId)))].slice(0, 500);
@@ -270,7 +285,10 @@ export class SavedService {
       if ((await getDoc(reference)).exists()) continue;
       let snapshot = { title: type === 'market_product' ? 'Market product' : 'eHub product' } as SaveTarget['snapshot'];
       const collectionName = SavedItemCatalog.getCollection(type);
-      if (collectionName) {
+      if (type === 'ehub_product') {
+        // ehubProducts can't be read by members (rules), which left every imported E-Hub save titled "eHub product".
+        snapshot = (await this.readEHubProductSnapshot(productId)) ?? snapshot;
+      } else if (collectionName) {
         const product = await getDoc(doc(db, collectionName, productId)).catch(() => null);
         const data = product?.exists() ? product.data() : null;
         if (data) {
