@@ -143,7 +143,7 @@ export function ProductSellerCard({ store, onViewStore, onMessage }: SellerCardP
         </View>
         {store.isVerified ? <Text style={styles.verifiedText}>Verified seller identity</Text> : null}
         <View style={styles.sellerMetaRow}>
-          {hasRating ? <View style={styles.metaItem}><Star size={13} color="#f59e0b" fill="#f59e0b" /><Text style={styles.metaText}>{store.rating?.toFixed(1)} ({store.reviewCount})</Text></View> : null}
+          {hasRating ? <View style={styles.metaItem}><Star size={13} color="#f59e0b" fill="#f59e0b" /><Text accessibilityLabel={`Seller rating ${store.rating?.toFixed(1)} out of 5 from ${store.reviewCount} ratings`} style={styles.metaText}>Seller rating {store.rating?.toFixed(1)} · {store.reviewCount} {store.reviewCount === 1 ? 'rating' : 'ratings'}</Text></View> : null}
           {store.location ? <View style={[styles.metaItem, styles.flexShrink]}><MapPin size={13} color={colors.mutedText} /><Text numberOfLines={1} style={styles.metaText}>{store.location}</Text></View> : null}
         </View>
       </View>

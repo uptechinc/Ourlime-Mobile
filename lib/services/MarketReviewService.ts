@@ -60,7 +60,7 @@ export class MarketReviewService {
         id: review.id,
         productId: typeof review.productId === 'string' ? review.productId : '',
         reviewerId: typeof review.reviewerId === 'string' ? review.reviewerId : '',
-        reviewerName: typeof review.reviewerName === 'string' && review.reviewerName.trim() ? review.reviewerName.trim() : 'Marketplace Buyer',
+        reviewerName: typeof review.reviewerName === 'string' && review.reviewerName.trim() ? review.reviewerName.trim() : 'Ourlime member',
         rating,
         title: typeof review.title === 'string' ? review.title : '',
         comment: typeof review.comment === 'string' ? review.comment : '',

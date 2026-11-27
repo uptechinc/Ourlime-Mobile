@@ -1,5 +1,7 @@
 // Mirrors the website's eHub types (lib/types/ehubDiscovery.ts and the public parts of lib/types/ehubSeller.ts),
 // as returned by the ehubApi function.
+import type { RatingDistribution } from '@/lib/types/ratings';
+
 export type EHubProviderKind = 'business' | 'professional';
 
 export type EHubProvider = {
@@ -154,6 +156,11 @@ export type EHubCatalogProduct = {
   publicationState: 'published' | 'hidden';
   createdAt: string;
   updatedAt: string;
+  /** The product's own rating (ehubProductReviews), one decimal; null or missing before the first rating or from older servers. */
+  rating?: number | null;
+  ratingCount?: number;
+  /** Star counts keyed '1' to '5'. */
+  ratingDistribution?: RatingDistribution;
 };
 
 export type EHubPublicStoreSummary = {

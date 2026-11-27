@@ -16,9 +16,12 @@ export type AppServerErrorCode =
   | 'internal'
   | 'unknown';
 
-/** An error returned by one of the app's own Cloud Functions, with its code and a user-facing message. */
+/**
+ * An error returned by one of the app's own Cloud Functions, with its code, a user-facing message and the HttpsError
+ * details the function attached (e.g. { reason } from the rating callables).
+ */
 export class AppServerError extends Error {
-  public constructor(public readonly code: AppServerErrorCode, message: string) {
+  public constructor(public readonly code: AppServerErrorCode, message: string, public readonly details: unknown = null) {
     super(message);
     this.name = 'AppServerError';
   }
@@ -66,7 +69,8 @@ export class AppServerService {
   private normalize(error: unknown): AppServerError {
     if (error instanceof FirebaseError) {
       const code = error.code.replace(/^functions\//, '') as AppServerErrorCode;
-      return new AppServerError(KNOWN_CODES.has(code) ? code : 'unknown', error.message || 'The Ourlime server could not complete this request.');
+      const details: unknown = 'details' in error ? (error as FirebaseError & { details?: unknown }).details : null;
+      return new AppServerError(KNOWN_CODES.has(code) ? code : 'unknown', error.message || 'The Ourlime server could not complete this request.', details ?? null);
     }
     return new AppServerError('unknown', error instanceof Error ? error.message : 'The Ourlime server could not complete this request.');
   }

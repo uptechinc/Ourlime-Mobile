@@ -130,10 +130,13 @@ export function EHubProductCard({ product, width, onOpen, isCompact = false, isC
     }, { onViewCart: onOpenCart });
     if (isAdded) onAddedToCart?.();
   };
+  const productRatingCount = product.ratingCount ?? 0;
+  const productRating = productRatingCount > 0 ? product.rating ?? null : null;
+  const ratingLabel = productRating !== null ? `, rated ${productRating.toFixed(1)} out of 5 from ${productRatingCount} ${productRatingCount === 1 ? 'review' : 'reviews'}` : '';
   const priceLabel = isOnSale ? `${formatEHubPrice(currentPrice)}, was ${formatEHubPrice(product.price)}` : formatEHubPrice(currentPrice);
   const cartLabel = !isAvailable ? `${product.title} is out of stock` : isInCart ? `${product.title} is in your cart. Open cart` : `Add ${product.title} to cart`;
   return <View style={[styles.productCard, { width }]}>
-    <Pressable accessibilityRole="button" accessibilityLabel={`${product.title}, ${priceLabel}, from ${product.storeName}${stock.tone === 'in' ? '' : `, ${stock.label}`}`} onPress={() => onOpen(product.id)} android_ripple={{ color: colors.control }} style={styles.productMain}>
+    <Pressable accessibilityRole="button" accessibilityLabel={`${product.title}, ${priceLabel}${ratingLabel}, from ${product.storeName}${stock.tone === 'in' ? '' : `, ${stock.label}`}`} onPress={() => onOpen(product.id)} android_ripple={{ color: colors.control }} style={styles.productMain}>
       <View style={[styles.productImage, { height: width }]}>
         {product.imageUrl ? <View style={[styles.fill, !isAvailable && styles.imageMuted]}><CachedImage uri={product.imageUrl} style={styles.fill} accessibilityLabel={product.title} /></View> : <Package size={34} color={colors.mutedText} />}
         {discountPercent ? <View style={styles.saleBadge}><Text style={styles.saleBadgeText}>-{discountPercent}%</Text></View> : null}
@@ -144,6 +147,7 @@ export function EHubProductCard({ product, width, onOpen, isCompact = false, isC
           <Text numberOfLines={1} style={[styles.price, isOnSale && { color: colors.destructiveText }]}>{formatEHubPrice(currentPrice)}</Text>
           {isOnSale ? <Text numberOfLines={1} style={styles.oldPrice}>{formatEHubPrice(product.price)}</Text> : null}
         </View>
+        {productRating !== null ? <View style={styles.row}><Star size={12} color="#f59e0b" fill="#f59e0b" /><Text style={styles.ratingText}>{productRating.toFixed(1)}</Text><Text numberOfLines={1} style={styles.meta}>· {productRatingCount} {productRatingCount === 1 ? 'review' : 'reviews'}</Text></View> : null}
         <Text numberOfLines={1} style={styles.storeName}>{product.storeName}</Text>
         {stock.tone === 'in' ? null : <Text numberOfLines={1} style={[styles.stockText, { color: stockColor }]}>{stock.label}</Text>}
       </View>
@@ -168,7 +172,7 @@ type ProviderCardProps = {
   width: number;
   onOpen: (providerId: string) => void;
   actionLabel?: string;
-  /** Discover shows the rating as "(n verified interactions)"; the E-Hub home cards do not show ratings. */
+  /** Discover shows the service rating as "4.6 · 12 ratings"; the E-Hub home cards do not show ratings. */
   showRating?: boolean;
 };
 
@@ -188,7 +192,7 @@ export function EHubProviderCard({ provider, width, onOpen, actionLabel = 'View 
   const place = provider.nationwide ? 'Nationwide' : provider.location || provider.serviceAreas[0] || '';
   const coverHeight = Math.round(Math.min(width, 520) * 0.5);
   // "Services and products" is not repeated here: the cover badge already says "Shop + services".
-  const hasMeta = Boolean(provider.businessHours) || (showRating && provider.rating !== null);
+  const hasMeta = Boolean(provider.businessHours) || (showRating && provider.rating !== null && provider.reviewCount > 0);
   return <Pressable accessibilityRole="button" accessibilityLabel={`View ${provider.name}, ${label.toLowerCase()}${place ? `, ${place}` : ''}`} onPress={() => onOpen(provider.id)} style={[styles.providerCard, { width }]} android_ripple={{ color: colors.control }}>
     <View style={[styles.cover, { height: coverHeight }]}>
       {provider.coverUrl ? <CachedImage uri={provider.coverUrl} style={styles.fill} /> : <>
@@ -218,7 +222,7 @@ export function EHubProviderCard({ provider, width, onOpen, actionLabel = 'View 
         {allTags.length > tags.length ? <View style={styles.tagMore}><Text style={styles.tagMoreText}>+{allTags.length - tags.length}</Text></View> : null}
       </View> : null}
       {hasMeta ? <View style={styles.metaRow}>
-        {showRating && provider.rating !== null ? <View style={styles.row}><Star size={13} color="#f59e0b" fill="#f59e0b" /><Text style={styles.ratingText}>{provider.rating.toFixed(1)}</Text><Text numberOfLines={1} style={styles.meta}>({provider.reviewCount} verified interactions)</Text></View> : null}
+        {showRating && provider.rating !== null && provider.reviewCount > 0 ? <View style={styles.row}><Star size={13} color="#f59e0b" fill="#f59e0b" /><Text style={styles.ratingText}>{provider.rating.toFixed(1)}</Text><Text numberOfLines={1} style={styles.meta}>· {provider.reviewCount} {provider.reviewCount === 1 ? 'rating' : 'ratings'}</Text></View> : null}
         {provider.businessHours ? <View style={styles.row}><Clock size={13} color={colors.mutedText} /><Text numberOfLines={1} style={styles.meta}>{provider.businessHours}</Text></View> : null}
       </View> : null}
       <View style={styles.providerAction}><Text numberOfLines={1} style={styles.providerActionText}>{actionLabel}</Text><ArrowRight size={15} color={colors.successText} /></View>

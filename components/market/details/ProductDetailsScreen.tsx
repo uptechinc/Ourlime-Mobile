@@ -307,7 +307,7 @@ export default function ProductDetailsScreen({ productId }: ProductDetailsScreen
       {product.tags.length ? <View style={styles.optionWrap}>{product.tags.map((tag) => <View key={tag} style={styles.tag}><Text style={styles.tagText}>#{tag}</Text></View>)}</View> : null}
 
       <ProductReviewsSection productId={product.id} productTitle={product.title} reviews={detail.reviews} loading={detail.reviewsLoading} error={detail.reviewsError}
-        averageRating={product.rating} ratingCount={product.ratingCount} canWrite={Boolean(ownerId) && canMutate && ownerId !== product.sellerId}
+        averageRating={product.rating} ratingCount={product.ratingCount} canWrite={Boolean(ownerId) && canMutate && ownerId !== product.sellerId} currentUserId={ownerId ?? null} onSignIn={() => router.push('/(auth)/login')}
         onRetry={detail.reloadReviews} onReviewAdded={detail.reloadReviews} />
 
       {ownerId ? <ListingDiscussion ownerId={ownerId} productId={product.id} sellerId={product.sellerId} canMutate={canMutate} /> : <View style={styles.notice}><Text style={styles.noticeText}>Sign in to join the product discussion.</Text></View>}

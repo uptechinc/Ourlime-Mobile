@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Linking, Platform, Pressable, RefreshControl, Share, StyleSheet, Text, TextInput, View, type ScrollView } from 'react-native';
 import { BadgeCheck, Building2, Check, ChevronRight, Clock, Globe, MapPin, MessageCircle, Package, Send, Share2, Star, UserRound } from 'lucide-react-native';
 import SaveButton from '@/components/ui/SaveButton';
@@ -10,10 +10,13 @@ import KeyboardSafeView from '@/components/ui/KeyboardSafeView';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
 import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useEHubProvider } from '@/lib/hooks/useEHub';
-import { eHubService, EHUB_PROVIDER_SHARE_BASE_URL, getEHubTermsRoute } from '@/lib/services/EHubService';import { EHubChip, EHubEmptyState, EHubNotice, formatEHubPrice, useEHubLayout } from '@/components/ehub/EHubParts';
+import { eHubService, EHUB_PROVIDER_SHARE_BASE_URL, getEHubTermsRoute } from '@/lib/services/EHubService';
+import { EHubChip, EHubEmptyState, EHubNotice, formatEHubPrice, useEHubLayout } from '@/components/ehub/EHubParts';
 import { EHubScrollView } from '@/components/ehub/EHubScrollView';
 import { EHubProviderProfileSkeleton } from '@/components/ehub/EHubSkeletons';
+import ServiceRatingsSection from '@/components/ehub/ratings/ServiceRatingsSection';
 import type { EHubPlainEnquiryType, EHubProviderDetail } from '@/lib/types/ehubDiscovery';
+import type { ServiceRatingAggregate } from '@/lib/types/ratings';
 
 type Notice = { tone: 'success' | 'error'; text: string };
 
@@ -61,8 +64,12 @@ export default function EHubProviderProfileScreen() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [notice, setNotice] = useState<Notice | null>(null);
   const scrollRef = useRef<ScrollView | null>(null);
-  const layoutOffsets = useRef({ body: 0, columns: 0, form: 0 });
+  const layoutOffsets = useRef({ body: 0, columns: 0, form: 0, ratings: 0 });
   const restoredDraftKey = useRef<string | null>(null);
+  // The ratings section's latest aggregate, so the header line follows a new or deleted rating.
+  const [liveRating, setLiveRating] = useState<{ rating: number | null; count: number } | null>(null);
+  const handleAggregateChange = useCallback((aggregate: ServiceRatingAggregate) => setLiveRating({ rating: aggregate.total > 0 ? aggregate.overall : null, count: aggregate.total }), []);
+  useEffect(() => { setLiveRating(null); }, [providerId]);
 
   const requestedProduct = findRequestedProductTitle(provider, requestedProductName);
   const requestedService = provider?.services.find((service) => service.toLowerCase() === requestedServiceName.toLowerCase()) ?? null;
@@ -139,6 +146,11 @@ export default function EHubProviderProfileScreen() {
   };
 
   const handleOpenBuyerTerms = () => router.push(getEHubTermsRoute('buyer') as Href);
+  const handleSignIn = () => router.push(`/(auth)/login?next=${encodeURIComponent(`/ehub/providers/${providerId}`)}` as Href);
+  const scrollToRatings = () => {
+    const { body, ratings } = layoutOffsets.current;
+    setTimeout(() => scrollRef.current?.scrollTo({ y: Math.max(0, body + ratings - 12), animated: true }), 60);
+  };
 
   const header = <>
     <PageHeader title={provider?.name ?? 'Provider'} onBackPress={() => router.back()}
@@ -158,6 +170,7 @@ export default function EHubProviderProfileScreen() {
     </View></View>;
   }
 
+  const headerRating = liveRating ?? { rating: provider.rating, count: provider.reviewCount };
   const tags = [...provider.categories, ...provider.services];
   const place = provider.nationwide ? 'Serves nationwide' : provider.location || provider.serviceAreas.join(', ') || 'Location not provided';
   const productWidth = layout.isTablet && !layout.isWide ? layout.columnWidth(2) - 18 : layout.isWide ? Math.floor((layout.innerWidth - 400 - 36) / 2) - 2 : layout.innerWidth - 36;
@@ -233,7 +246,7 @@ export default function EHubProviderProfileScreen() {
                 <View style={styles.metaList}>
                   <View style={styles.row}><MapPin size={15} color={colors.mutedText} /><Text style={styles.meta}>{place}</Text></View>
                   {provider.businessHours ? <View style={styles.row}><Clock size={15} color={colors.mutedText} /><Text style={styles.meta}>{provider.businessHours}</Text></View> : null}
-                  {provider.rating !== null ? <View style={styles.row}><Star size={15} color="#f59e0b" fill="#f59e0b" /><Text style={styles.meta}>{provider.rating.toFixed(1)} from {provider.reviewCount} eligible reviews</Text></View> : null}
+                  {headerRating.rating !== null && headerRating.count > 0 ? <Pressable accessibilityRole="link" accessibilityLabel={`Rated ${headerRating.rating.toFixed(1)} out of 5 from ${headerRating.count} ${headerRating.count === 1 ? 'rating' : 'ratings'}. See ratings`} onPress={scrollToRatings} style={[styles.row, styles.linkRow]}><Star size={15} color="#f59e0b" fill="#f59e0b" /><Text style={styles.ratingValue}>{headerRating.rating.toFixed(1)}</Text><Text style={styles.meta}>·</Text><Text style={styles.ratingLink}>{headerRating.count} {headerRating.count === 1 ? 'rating' : 'ratings'}</Text></Pressable> : null}
                   {provider.websiteUrl ? <Pressable accessibilityRole="link" accessibilityLabel={`Open website ${provider.websiteUrl}`} onPress={() => void Linking.openURL(/^https?:\/\//i.test(provider.websiteUrl ?? '') ? provider.websiteUrl ?? '' : `https://${provider.websiteUrl}`)} style={[styles.row, styles.linkRow]}><Globe size={15} color={colors.accentText} /><Text numberOfLines={1} style={styles.link}>{provider.websiteUrl}</Text></Pressable> : null}
                 </View>
                 {tags.length ? <View style={styles.tags}>{tags.map((tag) => <View key={tag} style={styles.tag}><Text style={styles.tagText}>{tag}</Text></View>)}</View> : null}
@@ -245,6 +258,10 @@ export default function EHubProviderProfileScreen() {
             <View onLayout={(event) => { layoutOffsets.current.columns = event.nativeEvent.layout.y; }} style={[styles.columns, layout.isWide && styles.columnsWide]}>
               {/* Phones open on the catalog ("View store"); a product or service enquiry link opens on the form. */}
               {layout.isWide || !(requestedProduct || requestedService) ? <>{catalog}{enquiryForm}</> : <>{enquiryForm}{catalog}</>}
+            </View>
+            <View onLayout={(event) => { layoutOffsets.current.ratings = event.nativeEvent.layout.y; }}>
+              <ServiceRatingsSection providerId={provider.id} providerName={provider.name} services={provider.services} viewerId={profile?.uid ?? null} isOwnProvider={isOwnProvider}
+                fallback={{ rating: provider.rating, reviewCount: provider.reviewCount }} onSignIn={handleSignIn} onContactProvider={scrollToForm} onAggregateChange={handleAggregateChange} />
             </View>
           </View>
         </EHubScrollView>
@@ -272,6 +289,8 @@ const createStyles = (colors: AppThemeColors, gutter: number) => StyleSheet.crea
   nameRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10 },
   name: { flexShrink: 1, color: colors.text, fontSize: 24, lineHeight: 30, fontWeight: '900' },
   verifiedBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 999, backgroundColor: colors.successSurface },
+  ratingValue: { color: colors.text, fontSize: 13, fontWeight: '900' },
+  ratingLink: { color: colors.accentText, fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' },
   verifiedText: { color: colors.successText, fontSize: 12, fontWeight: '800' },
   description: { color: colors.secondaryText, fontSize: 14, lineHeight: 21 },
   metaList: { gap: 7 },

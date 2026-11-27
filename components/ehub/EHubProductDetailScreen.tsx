@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Platform, Pressable, RefreshControl, ScrollView, Share, StyleSheet, Text, View, type NativeScrollEvent, type NativeSyntheticEvent } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { BadgeCheck, ChevronRight, Info, Package, RotateCcw, ShieldCheck, Star, Store, Truck } from 'lucide-react-native';
 import { useLocalSearchParams, useRouter, type Href } from 'expo-router';
 import { useAppTheme, type AppThemeColors } from '@/lib/contexts/ThemeContext';
+import { usePageAccess } from '@/lib/contexts/PageAccessContext';
 import { useEHubProduct } from '@/lib/hooks/useEHub';
 import { getEHubTermsRoute } from '@/lib/services/EHubService';
 import { getEHubCurrentPrice, normalizeEHubSalePrice } from '@/lib/services/EHubCommerceService';
@@ -15,6 +16,9 @@ import { EHubEmptyState, EHubNotice, formatEHubPrice, useEHubLayout } from '@/co
 import { EHubProductDetailSkeleton } from '@/components/ehub/EHubSkeletons';
 import SellerCouriersPanel from '@/components/market/couriers/SellerCouriersPanel';
 import ProductGallery from '@/components/ehub/productDetail/ProductGallery';
+import EHubProductReviewsSection from '@/components/ehub/ratings/EHubProductReviewsSection';
+import { RatingStars } from '@/components/reviews/RatingStars';
+import type { EHubProductRatingAggregate } from '@/lib/types/ratings';
 import { PRODUCT_TOP_BAR_HEIGHT, ProductBottomBar, ProductTopBar } from '@/components/ehub/productDetail/ProductDetailBars';
 import {
   PRODUCT_DETAIL_GUTTER, ProductDetailSection, ProductExpandableText, ProductInfoRow, ProductOptionPicker, ProductQuantityStepper,
@@ -37,6 +41,13 @@ export default function EHubProductDetailScreen() {
   const insets = useSafeAreaInsets();
   const layout = useEHubLayout();
   const styles = useMemo(() => createStyles(colors), [colors]);
+  const { profile } = usePageAccess();
+  const scrollRef = useRef<ScrollView | null>(null);
+  const reviewsOffset = useRef(0);
+  // The reviews section's latest aggregate, so the rating line follows a new or deleted review.
+  const [liveRating, setLiveRating] = useState<{ rating: number | null; count: number } | null>(null);
+  const handleAggregateChange = useCallback((aggregate: EHubProductRatingAggregate) => setLiveRating({ rating: aggregate.ratingCount > 0 ? aggregate.rating : null, count: aggregate.ratingCount }), []);
+  useEffect(() => { setLiveRating(null); }, [productId]);
   const resource = useEHubProduct(productId);
   const detail = resource.data;
   const [selectedVariant, setSelectedVariant] = useState('');
@@ -94,6 +105,8 @@ export default function EHubProductDetailScreen() {
     }, { onViewCart: () => setIsCartOpen(true) });
     if (isAdded) added.flash();
   };
+  const handleSignIn = () => router.push(`/(auth)/login?next=${encodeURIComponent(`/ehub/products/${productId}`)}` as Href);
+  const scrollToReviews = () => scrollRef.current?.scrollTo({ y: Math.max(0, reviewsOffset.current - headerHeight - 8), animated: true });
   const handleShare = () => {
     if (!detail) return;
     const url = `https://ourlime.com/ehub/products/${encodeURIComponent(detail.product.id)}`;
@@ -127,7 +140,11 @@ export default function EHubProductDetailScreen() {
   const stock = describeProductStock(product.inventory);
   const stockColor = stock.tone === 'positive' ? colors.accentText : stock.tone === 'low' ? colors.warningText : colors.destructiveText;
   const stockDotColor = stock.tone === 'positive' ? colors.accent : stock.tone === 'low' ? '#f59e0b' : colors.destructive;
-  const hasRating = store.rating !== null && store.reviewCount > 0;
+  const hasSellerRating = store.rating !== null && store.reviewCount > 0;
+  const catalogRatingCount = product.ratingCount ?? 0;
+  const catalogRating = catalogRatingCount > 0 ? product.rating ?? null : null;
+  const productRatingCount = liveRating?.count ?? catalogRatingCount;
+  const productRating = liveRating ? liveRating.rating : catalogRating;
   const specs: ProductSpec[] = [
     { label: 'Category', value: product.category },
     ...(product.brand ? [{ label: 'Brand', value: product.brand }] : []),
@@ -149,10 +166,17 @@ export default function EHubProductDetailScreen() {
       {store.isVerified ? <BadgeCheck size={15} color={colors.accentText} /> : null}
     </Pressable>
     <Text accessibilityRole="header" style={styles.title}>{product.title}</Text>
-    {hasRating ? <Pressable accessibilityRole="link" accessibilityLabel={`Seller rated ${store.rating?.toFixed(1)} out of 5 from ${store.reviewCount} reviews. View store`} onPress={handleViewStore} style={styles.ratingRow}>
-      <Star size={15} color="#f59e0b" fill="#f59e0b" />
+    {productRating !== null ? <Pressable accessibilityRole="link" accessibilityLabel={`Rated ${productRating.toFixed(1)} out of 5 from ${productRatingCount} ${productRatingCount === 1 ? 'review' : 'reviews'}. See reviews`} onPress={scrollToReviews} style={styles.ratingRow}>
+      <RatingStars value={productRating} size={14} />
+      <Text style={styles.ratingValue}>{productRating.toFixed(1)}</Text>
+      <Text style={styles.sellerRatingCount}>·</Text>
+      <Text style={styles.ratingCount}>{productRatingCount} {productRatingCount === 1 ? 'review' : 'reviews'}</Text>
+    </Pressable> : null}
+    {hasSellerRating ? <Pressable accessibilityRole="link" accessibilityLabel={`Seller rating ${store.rating?.toFixed(1)} out of 5 from ${store.reviewCount} ${store.reviewCount === 1 ? 'rating' : 'ratings'}. View store`} onPress={handleViewStore} style={styles.ratingRow}>
+      <Text style={styles.sellerRatingLabel}>Seller rating</Text>
+      <Star size={13} color="#f59e0b" fill="#f59e0b" />
       <Text style={styles.ratingValue}>{store.rating?.toFixed(1)}</Text>
-      <Text style={styles.ratingCount}>({store.reviewCount} seller {store.reviewCount === 1 ? 'review' : 'reviews'})</Text>
+      <Text style={styles.sellerRatingCount}>· {store.reviewCount} {store.reviewCount === 1 ? 'rating' : 'ratings'}</Text>
     </Pressable> : null}
     <View style={styles.priceRow}>
       <Text style={styles.price}>{formatEHubPrice(currentPrice)}</Text>
@@ -194,7 +218,7 @@ export default function EHubProductDetailScreen() {
     <View style={styles.screen}>
       {statusBar}
       {isWide ? <ProductTopBar title={product.title} isSolid isFloating={false} saveTarget={{ type: 'ehub_product', itemId: product.id, snapshot: { title: product.title, thumbnail: product.imageUrl ?? null } }} onBack={() => router.back()} onShare={handleShare} onOpenCart={() => setIsCartOpen(true)} /> : null}
-      <ScrollView style={styles.flex} showsVerticalScrollIndicator={false} onScroll={handleScroll} scrollEventThrottle={32}
+      <ScrollView ref={scrollRef} style={styles.flex} showsVerticalScrollIndicator={false} onScroll={handleScroll} scrollEventThrottle={32}
         refreshControl={<RefreshControl refreshing={resource.isRefreshing} onRefresh={() => void resource.refresh()} tintColor={colors.accent} progressViewOffset={isWide ? 0 : headerHeight} />}
         contentContainerStyle={styles.scrollContent}>
         <View style={isWide ? [styles.wideBody, { width: Math.min(layout.width, WIDE_MAXIMUM_WIDTH) }] : null}>
@@ -218,6 +242,13 @@ export default function EHubProductDetailScreen() {
               {product.description ? <ProductExpandableText text={product.description} /> : <Text style={styles.mutedText}>The seller has not added a description.</Text>}
               <Text style={styles.subheading}>Details</Text>
               <ProductSpecList specs={specs} />
+            </ProductDetailSection>
+          </View>
+          <View style={styles.sectionGap} />
+          <View onLayout={(event) => { reviewsOffset.current = event.nativeEvent.layout.y; }} style={isWide ? styles.wideCard : null}>
+            <ProductDetailSection title="Ratings & reviews">
+              <EHubProductReviewsSection productId={product.id} productTitle={product.title} viewerId={profile?.uid ?? null}
+                fallback={{ rating: catalogRating, ratingCount: catalogRatingCount, ratingDistribution: product.ratingDistribution ?? null }} onSignIn={handleSignIn} onContactSeller={handleEnquire} onAggregateChange={handleAggregateChange} />
             </ProductDetailSection>
           </View>
           <View style={styles.sectionGap} />
@@ -257,6 +288,8 @@ const createStyles = (colors: AppThemeColors) => StyleSheet.create({
   ratingRow: { alignSelf: 'flex-start', minHeight: 32, flexDirection: 'row', alignItems: 'center', gap: 4 },
   ratingValue: { color: colors.text, fontSize: 14, fontWeight: '800' },
   ratingCount: { color: colors.accentText, fontSize: 13, fontWeight: '600', textDecorationLine: 'underline' },
+  sellerRatingLabel: { marginRight: 2, color: colors.mutedText, fontSize: 13, fontWeight: '600' },
+  sellerRatingCount: { color: colors.mutedText, fontSize: 13, fontWeight: '600' },
   priceRow: { marginTop: 4, flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', columnGap: 8, rowGap: 4 },
   price: { color: colors.text, fontSize: 26, lineHeight: 32, fontWeight: '900' },
   oldPrice: { color: colors.mutedText, fontSize: 16, fontWeight: '600', textDecorationLine: 'line-through' },
