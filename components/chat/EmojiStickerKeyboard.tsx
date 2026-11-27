@@ -142,9 +142,11 @@ export function EmojiStickerKeyboard({
 
   useEffect(() => {
     if (visible) {
-      setStickerIconSource(getRandomLocalStickerSource());
+      setStickerIconSource((previous) => getRandomLocalStickerSource(previous));
+      // Open on the tab the caller asked for (the sticker button asks for Stickers); useState only read it once.
+      setActiveTab(initialTab);
     }
-  }, [visible]);
+  }, [visible, initialTab]);
 
   // Sticker pack state
   const [activePackId, setActivePackId] = useState('all');

@@ -750,7 +750,7 @@ export default function ChatPage() {
 
     useEffect(() => {
         if (keyboardState.visible) {
-            setComposerStickerIcon(getRandomLocalStickerSource());
+            setComposerStickerIcon((previous) => getRandomLocalStickerSource(previous));
         }
     }, [keyboardState.visible]);
     const [showSettings, setShowSettings] = useState(false);
@@ -1740,7 +1740,7 @@ export default function ChatPage() {
                                 <TouchableOpacity
                                     onPress={() => {
                                         Keyboard.dismiss();
-                                        setComposerStickerIcon(getRandomLocalStickerSource());
+                                        setComposerStickerIcon((previous) => getRandomLocalStickerSource(previous));
                                         setKeyboardState({ visible: true, tab: 'stickers' });
                                     }}
                                     style={{ padding: 4, alignItems: 'center', justifyContent: 'center' }}
@@ -1752,9 +1752,8 @@ export default function ChatPage() {
                                         style={{
                                              width: 22,
                                              height: 22,
-                                             borderRadius: 4,
-                                             borderWidth: keyboardState.visible && keyboardState.tab === 'stickers' ? 1.5 : 0,
-                                             borderColor: colors.accent,
+                                             // No outline when the picker is open: it drew a green box around the transparent sticker.
+                                             opacity: keyboardState.visible && keyboardState.tab === 'stickers' ? 0.6 : 1,
                                         }}
                                         resizeMode="contain"
                                     />

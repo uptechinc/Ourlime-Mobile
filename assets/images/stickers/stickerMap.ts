@@ -58,7 +58,30 @@ export function getLocalStickerSource(url: string | undefined): ImageSourcePropT
 
 const LOCAL_STICKER_LIST: ImageSourcePropType[] = Object.values(LOCAL_STICKER_MAP);
 
-export function getRandomLocalStickerSource(): ImageSourcePropType {
-  const index = Math.floor(Math.random() * LOCAL_STICKER_LIST.length);
-  return LOCAL_STICKER_LIST[index] ?? LOCAL_STICKER_MAP['/images/stickers/reactions/Laughing.png'];
+/**
+ * Stickers whose PNG has a transparent background (checked pixel by pixel). The others are flat RGB images with a
+ * white or coloured box, which looks like a pasted square when used as the composer's sticker button.
+ */
+const TRANSPARENT_STICKER_KEYS = [
+  '/images/stickers/emotions/Heart Eyes.png',
+  '/images/stickers/emotions/Huggie.png',
+  '/images/stickers/emotions/Relaxed.png',
+  '/images/stickers/funny/Bozo.png',
+  '/images/stickers/funny/Music.png',
+  '/images/stickers/greetings/Cheers.png',
+  '/images/stickers/greetings/Thank you.png',
+  '/images/stickers/reactions/Confused.png',
+  '/images/stickers/reactions/Laughing.png',
+  '/images/stickers/reactions/Sleepy.png',
+  '/images/stickers/reactions/Surprised .png',
+  '/images/stickers/thinking/Detective .png',
+] as const;
+const TRANSPARENT_STICKER_LIST: ImageSourcePropType[] = TRANSPARENT_STICKER_KEYS.map((key) => LOCAL_STICKER_MAP[key]).filter(Boolean);
+
+/** A random transparent sticker for sticker buttons; a different one each time it is called. */
+export function getRandomLocalStickerSource(previous?: ImageSourcePropType): ImageSourcePropType {
+  const pool = TRANSPARENT_STICKER_LIST.length ? TRANSPARENT_STICKER_LIST : LOCAL_STICKER_LIST;
+  const choices = pool.length > 1 && previous ? pool.filter((source) => source !== previous) : pool;
+  const index = Math.floor(Math.random() * choices.length);
+  return choices[index] ?? LOCAL_STICKER_MAP['/images/stickers/reactions/Laughing.png'];
 }
