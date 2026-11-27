@@ -68,7 +68,7 @@ export function ProductBottomBar({ price, originalPrice, isAvailable, isAdded = 
   const styles = useMemo(() => createStyles(colors), [colors]);
   // Narrow phones (360dp) drop the cart icon so the label never truncates next to the price.
   const isRoomy = useWindowDimensions().width >= 400;
-  return <SafeAreaView edges={['bottom', 'left', 'right']} style={styles.bottomBar}>
+  return <SafeAreaView /* discipline-exempt safe-area-edges: bottom bar or sheet, must not pad its top */ edges={['bottom', 'left', 'right']} style={styles.bottomBar}>
     <View style={styles.bottomRow}>
       <View accessible accessibilityLabel={`Price ${formatEHubPrice(price)}${originalPrice !== null ? `, was ${formatEHubPrice(originalPrice)}` : ''}`} style={styles.priceColumn}>
         <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={styles.barPrice}>{formatEHubPrice(price)}</Text>

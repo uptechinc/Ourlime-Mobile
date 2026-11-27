@@ -33,7 +33,7 @@ export default function LessonOutlineSheet({ visible, modules, currentLessonId, 
     <Modal visible={visible} animationType="slide" transparent statusBarTranslucent onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <Pressable accessibilityRole="button" accessibilityLabel="Close course outline" onPress={onClose} style={StyleSheet.absoluteFill} />
-        <SafeAreaView edges={['bottom', 'left', 'right']} style={styles.sheet}>
+        <SafeAreaView /* discipline-exempt safe-area-edges: bottom bar or sheet, must not pad its top */ edges={['bottom', 'left', 'right']} style={styles.sheet}>
           <View style={styles.handle} />
           <View style={styles.header}>
             <View style={styles.flex}>

@@ -92,9 +92,9 @@ export default function ProjectReviewScreen() {
   };
 
   const header = <ProjectScreenHeader title={portal?.project.name ?? 'Project review'} subtitle="Shared with you" onBack={() => router.back()} />;
-  if (loading) return <SafeAreaView edges={['left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>{header}<ActivityIndicator style={{ marginTop: 40 }} color={colors.accent} /></SafeAreaView>;
+  if (loading) return <SafeAreaView /* discipline-exempt safe-area-edges: the header above applies the top inset */ edges={['left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>{header}<ActivityIndicator style={{ marginTop: 40 }} color={colors.accent} /></SafeAreaView>;
   if (!portal) {
-    return <SafeAreaView edges={['left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>
+    return <SafeAreaView /* discipline-exempt safe-area-edges: the header above applies the top inset */ edges={['left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>
       {header}
       <View style={{ flex: 1, justifyContent: 'center', padding: PROJECT_GUTTER }}>
         <ProjectEmptyState icon={<Eye size={40} color={colors.mutedText} />} title="Nothing to review" hint={error} actionLabel="Try again" onAction={() => { setLoading(true); void load(); }} secondaryLabel="Back to projects" onSecondary={() => router.replace('/projectManagement')} />
@@ -108,7 +108,7 @@ export default function ProjectReviewScreen() {
   const muted = { color: colors.mutedText, fontSize: 13, lineHeight: 18 } as const;
 
   return (
-    <SafeAreaView edges={['left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>
+    <SafeAreaView /* discipline-exempt safe-area-edges: the header above applies the top inset */ edges={['left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>
       {header}
       <ScrollView contentContainerStyle={{ padding: PROJECT_GUTTER, gap: 12, paddingBottom: 48 }} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} tintColor="#10b981" />}>
         {!isStakeholder ? <Text style={muted}>Preview: this is everything clients and reviewers see on this project.</Text> : null}

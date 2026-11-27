@@ -122,7 +122,7 @@ export function ProjectManagementSkeleton(): ReactNode {
 export function ProjectsPageSkeleton(): ReactNode {
   const { colors } = useAppTheme();
   return (
-    <SafeAreaView edges={['left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>
+    <SafeAreaView /* discipline-exempt safe-area-edges: the header above applies the top inset */ edges={['left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>
       <PageHeaderSkeleton titleWidth={92} />
       <ScrollView scrollEnabled={false} contentContainerStyle={{ padding: 18, paddingBottom: 48, gap: 18 }}>
         <View style={{ borderRadius: 22, padding: 18, backgroundColor: '#34d399', gap: 16 }}>

@@ -81,7 +81,7 @@ export default function JobDetailScreen() {
           <JobDetailBottomBarSkeleton />
         </View>
       ) : error || !job ? (
-        <SafeAreaView edges={['bottom']} style={styles.centerContainer}>
+        <SafeAreaView /* discipline-exempt safe-area-edges: bottom bar or sheet, must not pad its top */ edges={['bottom']} style={styles.centerContainer}>
           <View style={styles.errorIcon}><SearchX size={30} color={colors.mutedText} /></View>
           <Text style={styles.errorText}>{error || 'Job not found.'}</Text>
           <Text style={styles.errorHint}>It may have been filled, closed or removed by the poster.</Text>

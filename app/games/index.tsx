@@ -43,7 +43,7 @@ export default function GamesScreen() {
   useEffect(() => { void load(); }, [load]);
 
   return (
-    <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
+    <SafeAreaView /* discipline-exempt safe-area-edges: the header above applies the top inset */ edges={['left', 'right']} style={styles.safeArea}>
       <PageHeader title="Games" onBackPress={() => router.back()} />
       <ScrollView contentContainerStyle={styles.scroll} refreshControl={<RefreshControl refreshing={isRefreshing} onRefresh={() => void load(true)} tintColor={colors.accent} />}>
         <View style={[styles.column, { width: contentWidth }]}>

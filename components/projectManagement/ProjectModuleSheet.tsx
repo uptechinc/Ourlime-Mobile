@@ -23,7 +23,7 @@ export default function ProjectModuleSheet({ visible, title, subtitle, onClose, 
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={{ flex: 1, backgroundColor: colors.canvas }}>
         <ProjectScreenHeader title={title} subtitle={subtitle} onBack={onClose} right={<ProjectIconButton accessibilityLabel="Close" onPress={onClose}><X size={22} color={colors.icon} /></ProjectIconButton>} />
-        <SafeAreaView edges={['left', 'right', 'bottom']} style={{ flex: 1 }}>
+        <SafeAreaView /* discipline-exempt safe-area-edges: the header above applies the top inset */ edges={['left', 'right', 'bottom']} style={{ flex: 1 }}>
           <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: PROJECT_GUTTER, gap: 12, paddingBottom: 40 }}>
             {children}
           </ScrollView>

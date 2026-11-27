@@ -48,7 +48,7 @@ export function JobDetailBottomBar({ jobId, jobTitle, isCreator, isApplied, isOp
     return <View accessible accessibilityLabel="Applications are closed for this listing" style={[styles.primary, styles.muted]}><Lock size={16} color={colors.disabledText} /><Text numberOfLines={1} style={styles.mutedText}>Applications closed</Text></View>;
   };
 
-  return <SafeAreaView edges={['bottom', 'left', 'right']} style={styles.bar}>
+  return <SafeAreaView /* discipline-exempt safe-area-edges: bottom bar or sheet, must not pad its top */ edges={['bottom', 'left', 'right']} style={styles.bar}>
     <View style={styles.row}>
       {canSave && !isCreator ? <JobSaveButton jobId={jobId} jobTitle={jobTitle} variant="outlined" /> : null}
       {renderPrimary()}

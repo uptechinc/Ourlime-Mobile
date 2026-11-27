@@ -71,7 +71,7 @@ export function EventsPageSkeleton(): ReactNode {
   const { colors } = useAppTheme();
   const surfaceCard = { backgroundColor: colors.surface, borderColor: colors.border };
   return (
-    <SafeAreaView edges={['left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>
+    <SafeAreaView /* discipline-exempt safe-area-edges: the header above applies the top inset */ edges={['left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>
       <PageHeader title="Events" onBackPress={() => router.back()} />
       <ScrollView scrollEnabled={false} contentContainerStyle={styles.listContent}>
         <Skeleton width="100%" height={380} borderRadius={20} />

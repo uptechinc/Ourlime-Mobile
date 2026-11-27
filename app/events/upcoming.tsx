@@ -71,7 +71,7 @@ export default function UpcomingEventsPage() {
   const results = useMemo(() => sortEvents(events.filter((event) => matchesEventFilters(event, filters, location)), sort, location, attendeeCounts), [attendeeCounts, events, filters, location, sort]);
 
   return (
-    <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
+    <SafeAreaView /* discipline-exempt safe-area-edges: the header above applies the top inset */ edges={['left', 'right']} style={styles.safeArea}>
       <PageHeader title="Upcoming Events" onBackPress={() => router.back()} />
       <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} tintColor={colors.accent} />}>
         <View>

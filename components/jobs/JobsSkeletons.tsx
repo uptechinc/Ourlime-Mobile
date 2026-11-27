@@ -89,7 +89,7 @@ export function JobsListSkeleton({ variant = 'professional' }: JobsListSkeletonP
 export function JobsPageSkeleton(): ReactNode {
   const { colors } = useAppTheme();
   return (
-    <SafeAreaView edges={['left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>
+    <SafeAreaView /* discipline-exempt safe-area-edges: the header above applies the top inset */ edges={['left', 'right']} style={{ flex: 1, backgroundColor: colors.canvas }}>
       <PageHeaderSkeleton titleWidth={44} />
       <ScrollView scrollEnabled={false} contentContainerStyle={{ paddingBottom: 48, gap: 16 }}>
         <View style={{ marginHorizontal: 16, marginTop: 16, gap: 8 }}>
@@ -198,7 +198,7 @@ export function JobDetailSkeleton(): ReactNode {
 export function JobDetailBottomBarSkeleton(): ReactNode {
   const { colors } = useAppTheme();
   return (
-    <SafeAreaView edges={['bottom', 'left', 'right']} style={{ backgroundColor: colors.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
+    <SafeAreaView /* discipline-exempt safe-area-edges: bottom bar or sheet, must not pad its top */ edges={['bottom', 'left', 'right']} style={{ backgroundColor: colors.surface, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border }}>
       <View style={{ minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingVertical: 12 }}>
         <Skeleton width={48} height={48} borderRadius={12} />
         <View style={{ flex: 1 }}><Skeleton width="100%" height={48} borderRadius={12} /></View>

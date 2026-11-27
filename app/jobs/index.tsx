@@ -173,7 +173,7 @@ export default function JobsPage() {
   };
 
   return (
-    <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
+    <SafeAreaView /* discipline-exempt safe-area-edges: the header above applies the top inset */ edges={['left', 'right']} style={styles.safeArea}>
       <PageHeader title="Jobs" onBackPress={() => router.back()} />
       <KeyboardSafeView style={styles.flex}>
         <ScrollView

@@ -311,7 +311,7 @@ export default function ManageJobsScreen() {
 
   if (loading && jobs.length === 0) {
     return (
-      <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
+      <SafeAreaView /* discipline-exempt safe-area-edges: the header above applies the top inset */ edges={['left', 'right']} style={styles.safeArea}>
         <PageHeader title="Manage Jobs" onBackPress={() => router.back()} />
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <JobManagementSkeleton />
@@ -319,9 +319,9 @@ export default function ManageJobsScreen() {
       </SafeAreaView>
     );
   }
-  if (!loading && jobs.length === 0) return <SafeAreaView edges={['left', 'right']} style={styles.safeArea}><PageHeader title="Manage Jobs" onBackPress={() => router.back()} /><View style={styles.center}><View style={styles.emptyIcon}><Briefcase size={32} color={colors.mutedText} /></View><Text style={styles.jobTitle}>No listings yet</Text><Text style={styles.emptyText}>Post a job or quick task and its applicants will show up here.</Text><Pressable android_ripple={RIPPLE}accessibilityRole="button" onPress={() => router.replace('/jobs')} style={styles.emptyButton}><Text style={styles.emptyButtonText}>Go to Jobs</Text></Pressable></View></SafeAreaView>;
+  if (!loading && jobs.length === 0) return <SafeAreaView /* discipline-exempt safe-area-edges: the header above applies the top inset */ edges={['left', 'right']} style={styles.safeArea}><PageHeader title="Manage Jobs" onBackPress={() => router.back()} /><View style={styles.center}><View style={styles.emptyIcon}><Briefcase size={32} color={colors.mutedText} /></View><Text style={styles.jobTitle}>No listings yet</Text><Text style={styles.emptyText}>Post a job or quick task and its applicants will show up here.</Text><Pressable android_ripple={RIPPLE}accessibilityRole="button" onPress={() => router.replace('/jobs')} style={styles.emptyButton}><Text style={styles.emptyButtonText}>Go to Jobs</Text></Pressable></View></SafeAreaView>;
 
-  return <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
+  return <SafeAreaView /* discipline-exempt safe-area-edges: the header above applies the top inset */ edges={['left', 'right']} style={styles.safeArea}>
     <PageHeader title="Manage Jobs" onBackPress={() => router.back()} />
     <FlatList
       data={visibleApplications}

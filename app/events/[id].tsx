@@ -288,7 +288,7 @@ export default function EventDetailScreen() {
   };
 
   return (
-    <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
+    <SafeAreaView /* discipline-exempt safe-area-edges: the header above applies the top inset */ edges={['left', 'right']} style={styles.safeArea}>
       <PageHeader title="Event" onBackPress={() => router.back()} />
       <KeyboardSafeView style={styles.flex}>{renderBody()}</KeyboardSafeView>
       {event ? <CreateEventModal visible={isEditing} event={event} onClose={() => setIsEditing(false)} onCreated={() => { setIsEditing(false); void load(); }} /> : null}

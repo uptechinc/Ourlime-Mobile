@@ -288,7 +288,7 @@ export default function FriendsTab({ userId, initialSection = 'friends' }: Frien
 
       <Modal visible={menuItem !== null} transparent animationType="fade" onRequestClose={() => setMenuItem(null)}>
         <TouchableOpacity activeOpacity={1} onPress={() => setMenuItem(null)} style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(15, 23, 42, 0.45)' }}>
-          <SafeAreaView edges={['bottom', 'left', 'right']} style={{ backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 12 }}>
+          <SafeAreaView /* discipline-exempt safe-area-edges: bottom bar or sheet, must not pad its top */ edges={['bottom', 'left', 'right']} style={{ backgroundColor: colors.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 16, paddingTop: 10, paddingBottom: 12 }}>
             <View style={{ alignSelf: 'center', width: 40, height: 4, borderRadius: 2, backgroundColor: colors.border, marginBottom: 12 }} />
             {menuItem ? <Text numberOfLines={1} style={{ color: colors.text, fontWeight: '900', fontSize: 16, marginBottom: 8 }}>@{menuItem.userName}</Text> : null}
             {menuItem ? menuActions(menuItem).map((action) => (

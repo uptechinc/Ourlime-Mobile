@@ -181,7 +181,7 @@ export default function ProjectMilestonesPanel({ project, milestones, tasks, can
             right={<ProjectIconButton accessibilityLabel="Close" onPress={() => { if (!creating) onCloseCreate(); }}><X size={22} color={colors.icon} /></ProjectIconButton>}
           />
           <KeyboardSafeView style={{ flex: 1 }}>
-            <SafeAreaView edges={['left', 'right']} style={{ flex: 1 }}>
+            <SafeAreaView /* discipline-exempt safe-area-edges: the header above applies the top inset */ edges={['left', 'right']} style={{ flex: 1 }}>
               <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: PROJECT_GUTTER, gap: 16 }}>
                 <View style={{ gap: 6 }}>
                   <Text style={styles.label}>Milestone name *</Text>

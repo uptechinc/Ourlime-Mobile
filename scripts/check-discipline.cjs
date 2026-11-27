@@ -28,7 +28,19 @@ function collectSourceFiles(directory) {
   });
 }
 
+/**
+ * A deliberate exception: the line above (or the same line) carries `discipline-exempt <rule>: <reason>` in a comment,
+ * e.g. a screen whose PageHeader already applies the top inset, or a bottom bar that must not pad its top.
+ */
+function isExempt(sourceFile, node, rule) {
+  const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+  const lines = sourceFile.text.split(/\r?\n/);
+  const marker = new RegExp(`discipline-exempt ${rule}: \\S`);
+  return [lines[line], lines[line - 1]].some((text) => typeof text === 'string' && marker.test(text));
+}
+
 function report(sourceFile, node, rule, message) {
+  if (isExempt(sourceFile, node, rule)) return;
   const position = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
   diagnostics.push({
     column: position.character + 1,

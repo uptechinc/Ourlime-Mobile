@@ -35,7 +35,7 @@ export default function CalendarPage() {
   useEffect(() => { void load(); }, [load]);
 
   return (
-    <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
+    <SafeAreaView /* discipline-exempt safe-area-edges: the header above applies the top inset */ edges={['left', 'right']} style={styles.safeArea}>
       <PageHeader title="Calendar" onBackPress={() => router.back()} />
       <ScrollView contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} tintColor={colors.accent} />}>
         {loading ? <EventsCalendarSkeleton /> : error ? (

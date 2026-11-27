@@ -85,7 +85,7 @@ export default function MyJobApplicationsScreen() {
   const acceptedCount = applications.filter((application) => application.status === 'accepted').length;
 
   return (
-    <SafeAreaView edges={['left', 'right']} style={styles.safeArea}>
+    <SafeAreaView /* discipline-exempt safe-area-edges: the header above applies the top inset */ edges={['left', 'right']} style={styles.safeArea}>
       <PageHeader title="My Applications" onBackPress={() => router.back()} />
       <ScrollView
         contentContainerStyle={styles.content}

@@ -115,7 +115,7 @@ export default function ProjectCreateSheet({ visible, onClose, onSubmit }: Proje
           right={step === 'details' ? <ProjectIconButton accessibilityLabel="Close" onPress={() => { if (!savingRef.current) onClose(); }}><X size={22} color={colors.icon} /></ProjectIconButton> : undefined}
         />
         {step === 'template' ? (
-          <SafeAreaView edges={['left', 'right', 'bottom']} style={{ flex: 1 }}>
+          <SafeAreaView /* discipline-exempt safe-area-edges: the header above applies the top inset */ edges={['left', 'right', 'bottom']} style={{ flex: 1 }}>
             <ScrollView contentContainerStyle={styles.content}>
               <Text style={styles.lead}>A template fills in a starter plan you can change later. Nothing is shared until you invite people.</Text>
               {projectTemplateService.list().map((option) => {

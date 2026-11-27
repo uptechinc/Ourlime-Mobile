@@ -153,7 +153,7 @@ function CommunityPickerModal({ visible, projectId, onClose }: CommunityPickerMo
           onBack={close}
           right={<ProjectIconButton accessibilityLabel="Close" onPress={close}><X size={22} color={colors.icon} /></ProjectIconButton>}
         />
-        <SafeAreaView edges={['left', 'right']} style={{ flex: 1 }}>
+        <SafeAreaView /* discipline-exempt safe-area-edges: the header above applies the top inset */ edges={['left', 'right']} style={{ flex: 1 }}>
           <ScrollView contentContainerStyle={{ padding: PROJECT_GUTTER, gap: 10 }}>
             <Text style={styles.muted}>Choose one Community you belong to. Its owner or an admin approves the link; if that is you, it is linked straight away.</Text>
             {loading ? <ActivityIndicator color={colors.accentText} style={{ marginTop: 16 }} accessibilityLabel="Loading your Communities" /> : null}
