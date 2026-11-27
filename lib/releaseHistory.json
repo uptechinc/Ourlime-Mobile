@@ -1,6 +1,17 @@
 {
   "releases": [
     {
+      "id": "1.3.2-ota-2026-11-27",
+      "version": "1.3.2",
+      "versionCode": 11,
+      "kind": "ota",
+      "date": "2026-11-27",
+      "notes": [
+        "Rate E-Hub businesses and professionals: an overall score plus optional attitude, punctuality, presentation, quality, communication and value, and whether you would recommend them.",
+        "Review E-Hub products, with a Verified order badge when you ordered it. Chat: the sticker button shows a different sticker each time and opens on Stickers."
+      ]
+    },
+    {
       "id": "1.3.2-ota-2026-11-26-7",
       "version": "1.3.2",
       "versionCode": 11,
