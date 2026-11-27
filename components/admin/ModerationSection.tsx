@@ -9,6 +9,7 @@ import AdminState from '@/components/admin/AdminState';
 import AdminDialog from '@/components/admin/AdminDialog';
 import AdminDeletedContentPanel, { useDeletedContent } from '@/components/admin/AdminDeletedContentPanel';
 import AdminBulkDeletionPanel from '@/components/admin/AdminBulkDeletionPanel';
+import AdminRatingsModerationPanel, { useRatingModeration } from '@/components/admin/AdminRatingsModerationPanel';
 import { readSingleFilter, type FilterGroup, type FilterValues } from '@/components/ui/FilterSheet';
 import { AdminModerationService, type AdminModerationReport, type AdminReportStatus } from '@/lib/services/AdminModerationService';
 import { adminContentService } from '@/lib/services/AdminContentService';
@@ -23,8 +24,8 @@ const moderationService = AdminModerationService.getInstance();
 const STATUS_FILTERS: readonly (AdminReportStatus | 'all')[] = ['all', 'pending', 'under_review', 'action_taken', 'resolved', 'dismissed', 'escalated'];
 const SEVERITY_FILTERS = ['all', 'low', 'medium', 'high', 'critical'] as const;
 
-type ModerationTab = 'reports' | 'appeals' | 'deleted';
-const MODERATION_TABS: readonly ModerationTab[] = ['reports', 'appeals', 'deleted'];
+type ModerationTab = 'reports' | 'appeals' | 'deleted' | 'ratings';
+const MODERATION_TABS: readonly ModerationTab[] = ['reports', 'appeals', 'deleted', 'ratings'];
 const isModerationTab = (value: string | undefined): value is ModerationTab => MODERATION_TABS.some((tab) => tab === value);
 
 const toFilterLabel = (value: string, allLabel: string): string => {
@@ -39,8 +40,9 @@ const severityTone = (severity: AdminModerationReport['severity']): AdminToneNam
 type LoadMode = 'initial' | 'refresh' | 'silent';
 
 /**
- * Moderation screen (/admin/moderation): Reports, Appeals and Deleted as segments; "Bulk delete" in the overflow
- * menu opens /admin/moderation?view=bulk. `?tab=reports|appeals|deleted` picks the starting segment.
+ * Moderation screen (/admin/moderation): Reports, Appeals, Deleted and Ratings (E-Hub service ratings and product
+ * reviews) as segments; "Bulk delete" in the overflow menu opens /admin/moderation?view=bulk.
+ * `?tab=reports|appeals|deleted|ratings` picks the starting segment.
  */
 export default function ModerationSection() {
 	const { view, tab } = useLocalSearchParams<{ view?: string; tab?: string }>();
@@ -70,6 +72,7 @@ function ModerationQueues({ initialTab }: { initialTab: ModerationTab }) {
 	/** Synchronous double-submit guard for appeal decisions (state updates land a frame later). */
 	const reviewingRef = useRef(false);
 	const deleted = useDeletedContent(activeTab === 'deleted');
+	const ratings = useRatingModeration(activeTab === 'ratings');
 
 	const filterGroups: FilterGroup[] = [
 		{ key: 'status', label: 'Status', options: STATUS_FILTERS.map((filter) => ({ value: filter, label: toFilterLabel(filter, 'Any status') })), value: status, defaultValue: 'all' },
@@ -167,15 +170,17 @@ function ModerationQueues({ initialTab }: { initialTab: ModerationTab }) {
 		);
 	}, [reports, search, severity, status]);
 
-	const handleRefresh = (): Promise<void> => (activeTab === 'deleted' ? deleted.reload('refresh') : load('refresh'));
+	const handleRefresh = (): Promise<void> => (activeTab === 'deleted' ? deleted.reload('refresh') : activeTab === 'ratings' ? ratings.reload('refresh') : load('refresh'));
 
 	const toolbarProps: AdminToolbarProps = {
 		segments: {
 			value: activeTab,
 			options: [
-				{ value: 'reports', label: 'Reports', count: loading ? undefined : reports.length },
-				{ value: 'appeals', label: 'Appeals', count: loading ? undefined : appeals.length },
+				// Four segments share a phone's width, so the counts live in each tab's result summary instead.
+				{ value: 'reports', label: 'Reports' },
+				{ value: 'appeals', label: 'Appeals' },
 				{ value: 'deleted', label: 'Deleted' },
+				{ value: 'ratings', label: 'Ratings' },
 			],
 			onChange: (next) => {
 				if (isModerationTab(next)) setActiveTab(next);
@@ -190,11 +195,15 @@ function ModerationQueues({ initialTab }: { initialTab: ModerationTab }) {
 		toolbarProps.search = { value: deleted.searchQuery, placeholder: 'Search title, reason, user, or content ID', onChange: deleted.setSearchQuery };
 		toolbarProps.filters = { groups: deleted.filterGroups, onApply: deleted.applyFilters, title: 'Filter deleted content' };
 		toolbarProps.resultSummary = deleted.loading ? undefined : `${deleted.filteredRecords.length} of ${deleted.records.length} deletions`;
+	} else if (activeTab === 'ratings') {
+		toolbarProps.search = { value: ratings.searchQuery, placeholder: 'Search reviewer, comment, provider or product', onChange: ratings.setSearchQuery };
+		toolbarProps.filters = { groups: ratings.filterGroups, onApply: ratings.applyFilters, title: 'Filter ratings' };
+		toolbarProps.resultSummary = ratings.loading ? undefined : `${ratings.filteredReviews.length} of ${ratings.reviews.length} ratings`;
 	} else {
 		toolbarProps.resultSummary = loading ? undefined : `${appeals.length} pending ${appeals.length === 1 ? 'appeal' : 'appeals'}`;
 	}
 
-	const isTabLoading = activeTab === 'deleted' ? deleted.loading : loading;
+	const isTabLoading = activeTab === 'deleted' ? deleted.loading : activeTab === 'ratings' ? ratings.loading : loading;
 	const screenState: AdminScreenState = isTabLoading ? { kind: 'loading', variant: 'list' } : { kind: 'ready' };
 
 	const renderReports = () => (
@@ -278,10 +287,10 @@ function ModerationQueues({ initialTab }: { initialTab: ModerationTab }) {
 	return (
 		<AdminScreen
 			title="Moderation"
-			subtitle="Reports, appeals and deleted content"
+			subtitle="Reports, appeals and ratings"
 			state={screenState}
 			onRefresh={handleRefresh}
-			refreshing={activeTab === 'deleted' ? deleted.refreshing : refreshing}
+			refreshing={activeTab === 'deleted' ? deleted.refreshing : activeTab === 'ratings' ? ratings.refreshing : refreshing}
 			toolbar={<AdminToolbar {...toolbarProps} />}
 			overflowActions={[
 				{
@@ -293,7 +302,11 @@ function ModerationQueues({ initialTab }: { initialTab: ModerationTab }) {
 				},
 			]}
 		>
-			{activeTab === 'deleted' ? <AdminDeletedContentPanel controller={deleted} /> : activeTab === 'appeals' ? renderAppeals() : renderReports()}
+			{activeTab === 'deleted' ? (
+				<AdminDeletedContentPanel controller={deleted} />
+			) : activeTab === 'ratings' ? (
+				<AdminRatingsModerationPanel controller={ratings} />
+			) : activeTab === 'appeals' ? renderAppeals() : renderReports()}
 
 			<AdminDialog
 				visible={Boolean(rejectTarget)}
